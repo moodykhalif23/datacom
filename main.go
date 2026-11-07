@@ -40,8 +40,8 @@ clean / query / watch flags:
   -snake        snake_case headers           -no-types   skip type normalization
   -dedupe       drop duplicate rows          -keep-empty keep all-empty rows
   -join FILE    left join another file       -on KEY     join key, or "left=right"
-  -derive "name = EXPR"   add a column; repeatable, e.g. "margin = revenue - cost",
-                "band = if(amount > 1000, high, low)", "yr = year(date)"
+  -derive "name = EXPR"   add or overwrite a column; repeatable, e.g. "margin = revenue - cost",
+                "band = if(amount > 1000, high, low)", "yr = year(date)", "status = lower(status)"
   -where EXPR   keep rows where EXPR is true; repeatable, ANDed, e.g. "amount > 1000",
                 "name ~ ltd", "email =~ @gov\.ke$", "phone not null", "a > 1 and b == x"
   -select a,b   keep columns (old:new renames)

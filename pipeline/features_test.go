@@ -65,6 +65,20 @@ func TestDeriveAndFilter(t *testing.T) {
 	}
 }
 
+func TestDeriveOverwrites(t *testing.T) {
+	tb := table(t, "status,n\nPAID,1\nPaid,2\npaid,3\n")
+	tb, err := Derive(tb, []string{"status = lower(status)", "n = n * 10", "big = n > 15"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(tb.Header, ","); got != "status,n,big" {
+		t.Fatalf("header = %q", got)
+	}
+	if got := strings.Join(collect(tb), ";"); got != "paid,10,false;paid,20,true;paid,30,true" {
+		t.Fatalf("rows = %q", got)
+	}
+}
+
 func TestJoin(t *testing.T) {
 	left := table(t, "id,branch,amount\n1,NBO,10\n2,MSA,20\n3,KSM,30\n")
 	right := table(t, "code,region,amount\nNBO,Central,x\nMSA,Coast,y\nMSA,Coast2,z\n")

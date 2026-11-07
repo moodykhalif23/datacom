@@ -42,10 +42,11 @@ type ValueCount struct {
 
 // Report is a whole-dataset profile.
 type Report struct {
-	Rows      int64         `json:"rows"`
-	Columns   []ColumnStats `json:"columns"`
-	Duplicate int64         `json:"duplicate_rows"`
-	Issues    []string      `json:"issues"`
+	Rows       int64         `json:"rows"`
+	Columns    []ColumnStats `json:"columns"`
+	Duplicate  int64         `json:"duplicate_rows"`
+	DupChecked int64         `json:"rows_checked_for_duplicates"`
+	Issues     []string      `json:"issues"`
 }
 
 func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
@@ -61,6 +62,7 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 		cols[i] = ColumnStats{Name: h, seen: map[string]int64{}}
 	}
 	rowHashes := map[uint64]struct{}{}
+	dupCap := int64(distinctCap) * 10 // exact duplicate scan is bounded; the report says so
 	for r := range t.Rows {
 		rep.Rows++
 		if rep.Rows == 1 {
@@ -72,7 +74,8 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 				}
 			}
 		}
-		if rep.Rows <= int64(distinctCap)*10 {
+		if rep.Rows <= dupCap {
+			rep.DupChecked++
 			h := hashRow(r)
 			if _, dup := rowHashes[h]; dup {
 				rep.Duplicate++
@@ -181,16 +184,37 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 			}
 			for k, n := range keys {
 				if n > 1 {
-					rep.Issues = append(rep.Issues, fmt.Sprintf("%s: inconsistent casing for %q", c.Name, k))
+					rep.Issues = append(rep.Issues, fmt.Sprintf("%s: inconsistent casing for %q (fold it with -derive \"%s = lower(%s)\")", c.Name, k, c.Name, ident(c.Name)))
 				}
 			}
 		}
 	}
 	if rep.Duplicate > 0 {
-		rep.Issues = append(rep.Issues, fmt.Sprintf("%d duplicate rows", rep.Duplicate))
+		rep.Issues = append(rep.Issues, rep.duplicates())
 	}
 	rep.Columns = cols
 	return rep
+}
+
+// duplicates describes the duplicate count and, when the scan stopped early,
+// how much of the file it covered, so a partial count never reads as a total.
+func (r *Report) duplicates() string {
+	s := fmt.Sprintf("%d duplicate rows", r.Duplicate)
+	if r.DupChecked < r.Rows {
+		s += fmt.Sprintf(" in the first %s rows (clean -dedupe counts them all)", commas(r.DupChecked))
+	}
+	return s
+}
+
+// ident quotes a column name for the expression language when it is not a
+// plain identifier, e.g. [Customer Name].
+func ident(name string) string {
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_') {
+			return "[" + name + "]"
+		}
+	}
+	return name
 }
 
 func round(f float64, places int) float64 {
@@ -207,7 +231,11 @@ func (r *Report) WriteJSON(w io.Writer) error {
 
 // WriteText emits a human-readable report.
 func (r *Report) WriteText(w io.Writer) {
-	fmt.Fprintf(w, "rows: %d   columns: %d   duplicate rows: %d\n\n", r.Rows, len(r.Columns), r.Duplicate)
+	fmt.Fprintf(w, "rows: %d   columns: %d   duplicate rows: %d", r.Rows, len(r.Columns), r.Duplicate)
+	if r.DupChecked < r.Rows {
+		fmt.Fprintf(w, " in the first %s rows", commas(r.DupChecked))
+	}
+	fmt.Fprint(w, "\n\n")
 	for _, c := range r.Columns {
 		fmt.Fprintf(w, "%s  (%s)\n", c.Name, c.Kind)
 		fmt.Fprintf(w, "  filled %d   missing %d (%.1f%%)   distinct %d\n", c.Count, c.Nulls, c.NullPct, c.Distinct)
