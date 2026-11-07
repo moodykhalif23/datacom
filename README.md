@@ -19,6 +19,7 @@ go install github.com/moodykhalif23/datacom@latest
 export PATH="$PATH:$(go env GOPATH)/bin"   # where go install puts binaries
 # or
 git clone https://github.com/moodykhalif23/datacom && cd datacom && go build -o datacom .
+go build -ldflags="-s -w" -o datacom .     # smaller binary: symbols stripped
 ```
 
 ## Usage
