@@ -25,6 +25,8 @@ func Write(w io.Writer, t *Table, f Format) (int, error) {
 		n, err = writeJSON(bw, t, true)
 	case FormatTable, FormatMarkdown:
 		n, err = writeTable(bw, t, f == FormatMarkdown)
+	case FormatXLSX:
+		n, err = writeXLSX(bw, t)
 	default:
 		return 0, fmt.Errorf("unsupported output format %q", f)
 	}

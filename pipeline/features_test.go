@@ -183,3 +183,37 @@ func TestReadXLSX(t *testing.T) {
 		t.Fatal("expected sheet error")
 	}
 }
+
+func TestTrend(t *testing.T) {
+	w1, prev := Trend(table(t, "status,count,sum\npaid,2,40\nfailed,1,5\n"), 1, nil)
+	if got := strings.Join(collect(w1), ";"); got != "paid,2,40,new,new;failed,1,5,new,new" {
+		t.Fatalf("first window %q", got)
+	}
+	w2, _ := Trend(table(t, "status,count,sum\npaid,5,30.5\nrefund,1,x\n"), 1, prev)
+	if got := strings.Join(collect(w2), ";"); got != "paid,5,30.5,3,-9.5;refund,1,x,new,new" {
+		t.Fatalf("second window %q", got)
+	}
+}
+
+func TestXLSXRoundTrip(t *testing.T) {
+	src := "id,name,ok,when,amount\n1,Acme <Ltd>,true,2025-01-15,1250.5\n2,,false,2025-05-02T18:00:00Z,\n"
+	path := t.TempDir() + "/out.xlsx"
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := Write(f, table(t, src), FormatXLSX); err != nil || n != 2 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	f.Close()
+	r, format, closeFn, err := Open(context.Background(), path, FormatAuto)
+	if err != nil || format != FormatXLSX {
+		t.Fatalf("open: %v %v", format, err)
+	}
+	defer closeFn()
+	back := ReadXLSX(context.Background(), r, "")
+	rows := collect(back)
+	if got := strings.Join(back.Header, ",") + "|" + strings.Join(rows, ";"); got != "id,name,ok,when,amount|1,Acme <Ltd>,true,2025-01-15,1250.5;2,,false,2025-05-02 18:00:00," {
+		t.Fatalf("round trip %q (err %v)", got, back.Err())
+	}
+}

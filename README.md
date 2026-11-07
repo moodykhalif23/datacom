@@ -5,7 +5,6 @@ A small, fast, dependency-free Go tool that turns large, messy data into clean, 
 - **Streams everything.** Files larger than RAM are fine. Only `-sort` and the `table` / `md` views buffer rows; `-dedupe` keeps one 8-byte hash per distinct row.
 - **Reads** CSV, TSV, JSON arrays, NDJSON and Excel (`.xlsx`, one sheet at a time), plain or gzip, from a file, stdin or an http(s) URL. Format is auto-detected.
 - **Survives bad networks.** A URL download that stalls or drops is retried with backoff and resumed from the last byte, so a slow or flaky connection still yields one correct stream.
-- **Cannot leak.** Every stage shares one context: an error, Ctrl-C, a closed pipe or `-limit` stops all goroutines, and memory per row stays constant.
 - **Cleans** headers, whitespace, `NULL` / `N/A` / `-` markers, numbers like `"1,250.00"`, `$3,400`, `KES 3400`, `(500)`, mixed date formats, `Yes/No/Y/N` booleans, duplicate and empty rows.
 - **Answers questions** with filters, derived columns, joins, select, group-by, aggregates and sort, all driven by one small expression language.
 - **Watches live data.** `watch` follows a growing file or stream and prints a fresh report every window, so you can see trends as they happen.
@@ -39,25 +38,6 @@ cat huge.json | datacom query -where "status == failed" -limit 50
 
 Output is a table on a terminal and CSV when piped. Choose with `-f table|csv|tsv|json|ndjson|md`.
 
-### Expressions
-
-`-where` keeps rows where the expression is true (repeatable, ANDed). `-derive "name = expression"` adds a column (repeatable; later ones can use earlier ones).
-
-| Expression | Meaning |
-| --- | --- |
-| `amount > 1000`, `a != b`, `date >= 2025-01-01` | compare: numeric when both sides are numbers, else case-insensitive text |
-| `name ~ ltd` | contains |
-| `email =~ @.*\.go\.ke$`, `x !~ ^test` | regex, unquoted is fine |
-| `phone is null`, `phone not null` | missing-value checks |
-| `a > 1 and (b == x or not c)` | boolean logic |
-| `price * qty - discount`, `amount % 7` | arithmetic; a non-number yields null |
-| `[Total Amount]` | a column whose name has spaces |
-| `round(x, 2)`, `abs(x)`, `len(s)`, `lower(s)`, `upper(s)`, `trim(s)` | numbers and text |
-| `concat(a, '-', b)`, `coalesce(a, b, 'none')`, `if(cond, yes, no)` | combine |
-| `year(d)`, `month(d)`, `day(d)` | date parts |
-
-A bare word that is not a column is taken as text, so `status == paid` works without quotes.
-
 ### Join
 
 `-join other.csv -on key` or `-on left_col=right_col`. It is a left join: every left row is kept, right-hand columns are appended, and several matches yield several rows. The right-hand file is held in memory, so put the smaller one there.
@@ -70,6 +50,7 @@ A bare word that is not a column is taken as text, so `status == paid` works wit
 
 `-agg "count, sum(x), avg(x), min(x), max(x), distinct(x), first(x), last(x)"`. Add `:alias` to name a column.
 Memory grows with the number of groups, not the number of rows.
+
 ### Profile
 
 ```
