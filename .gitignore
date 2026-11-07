@@ -3,3 +3,4 @@
 !testdata/*.gz
 *.out
 .stress/
+/testdata/*.out
