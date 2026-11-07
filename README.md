@@ -56,21 +56,6 @@ Parquet files are read row group by row group and written as Snappy-compressed r
 `-agg "count, sum(x), avg(x), min(x), max(x), distinct(x), first(x), last(x)"`. Add `:alias` to name a column.
 Memory grows with the number of groups, not the number of rows.
 
-### Profile
-
-```
-rows: 8   columns: 7   duplicate rows: 1
-
-amount_kes  (float)
-  filled 6   missing 2 (25.0%)   distinct 6
-  min -500   max 12000   mean 4166.5   stddev 4697.98
-...
-issues:
-  - region: inconsistent casing for "nairobi"
-  - 1 duplicate rows
-```
-
-Add `-json` for a machine-readable report.
 
 ## As a library
 
