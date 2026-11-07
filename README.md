@@ -54,7 +54,7 @@ Parquet files are read row group by row group and written as Snappy-compressed r
 
 ### Monitor
 
-Add `-monitor` to any command for a live line on stderr (rows, MB read, throughput, memory) and, at the end, a plain report of every hiccup: values that could not be typed per column with examples, rows padded or trimmed, empty and duplicate rows dropped, join rows without a match, and stages that had to buffer. Each finding says what to do about it. Add `-log runs.jsonl` to append the same report as one JSON line per run, errors included, so problems across many files or a scheduled job can be reviewed later. `datacom version` prints the build for bug reports.
+Add `-monitor` to any command for a live line on stderr (rows, MB read, throughput, memory) and, at the end, a plain report of every hiccup: values that could not be typed per column with examples, rows padded or trimmed, empty and duplicate rows dropped, join rows without a match, and stages that had to buffer. Each finding says what to do about it. Add `-log runs.jsonl` to append the same report as one JSON line per run, errors included, so problems across many files or a scheduled job can be reviewed later. `datacom version` prints the build for bug reports. The monitor costs a few percent of throughput and nothing when off.
 
 ### Aggregates
 
