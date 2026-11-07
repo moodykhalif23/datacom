@@ -14,9 +14,9 @@ A small, fast, dependency-free Go tool that turns large, messy data into clean, 
 ## Install
 
 ```sh
-git clone <your-repo-url> datacom && cd datacom && go build -o datacom .
-
-When you publish, set the module path in `go.mod` to your repository (for example `github.com/<you>/datacom`) so `go install` works.
+go install github.com/moodykhalif23/datacom@latest
+# or
+git clone https://github.com/moodykhalif23/datacom && cd datacom && go build -o datacom .
 ```
 
 ## Usage
@@ -69,7 +69,7 @@ Add `-json` for a machine-readable report.
 ## As a library
 
 ```go
-import "datacom/pipeline"
+import "github.com/moodykhalif23/datacom/pipeline"
 
 r, format, closeFn, _ := pipeline.Open("big.csv.gz", pipeline.FormatAuto)
 defer closeFn()
