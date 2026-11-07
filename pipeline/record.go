@@ -30,7 +30,7 @@ type Table struct {
 type run struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	once   sync.Once
+	mu     sync.Mutex
 	err    error
 }
 
@@ -63,16 +63,20 @@ func (t *Table) fail(err error) {
 	if err == nil {
 		return
 	}
-	t.run.once.Do(func() {
+	t.run.mu.Lock()
+	defer t.run.mu.Unlock()
+	if t.run.err == nil {
 		t.run.err = err
 		t.run.cancel()
-	})
+	}
 }
 
 func (t *Table) Err() error {
-	t.run.once.Do(func() {}) // establishes happens-before with fail
-	if t.run.err != nil {
-		return t.run.err
+	t.run.mu.Lock()
+	err := t.run.err
+	t.run.mu.Unlock()
+	if err != nil {
+		return err
 	}
 	if err := t.run.ctx.Err(); err == context.Canceled {
 		return nil // caller cancelled on purpose

@@ -41,6 +41,8 @@ func FormatFromName(name string) (Format, bool) {
 		return FormatJSON, true
 	case ".ndjson", ".jsonl":
 		return FormatNDJSON, true
+	case ".xlsx":
+		return FormatXLSX, true
 	case ".md":
 		return FormatMarkdown, true
 	}
@@ -64,6 +66,9 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 			return nil, "", nil, err
 		}
 		r, closeFn = f, f.Close
+	}
+	if f, ok := r.(*os.File); ok && isXLSX(src, f) {
+		return f, FormatXLSX, closeFn, nil // zip needs the seekable file itself
 	}
 	br := bufio.NewReaderSize(r, 1<<20)
 	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
@@ -109,6 +114,8 @@ func Read(ctx context.Context, r io.Reader, f Format) *Table {
 		return readCSV(ctx, r, f == FormatTSV)
 	case FormatNDJSON, FormatJSON:
 		return readJSON(ctx, r, f == FormatJSON)
+	case FormatXLSX:
+		return ReadXLSX(ctx, r, "")
 	}
 	t, ch := newRoot(ctx, nil)
 	t.fail(fmt.Errorf("unsupported input format %q", f))
@@ -237,4 +244,17 @@ func scalar(v any) string {
 	}
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+// isXLSX recognises a workbook by extension or by the zip signature.
+func isXLSX(name string, f *os.File) bool {
+	if fm, _ := FormatFromName(name); fm == FormatXLSX {
+		return true
+	}
+	if f == os.Stdin {
+		return false
+	}
+	var magic [4]byte
+	n, _ := f.ReadAt(magic[:], 0)
+	return n == 4 && string(magic[:]) == "PK\x03\x04"
 }

@@ -76,11 +76,11 @@ func TestCleanDedupeAndSnake(t *testing.T) {
 
 func TestFilterAggregateSort(t *testing.T) {
 	tb := table(t, "region,amount\nA,10\nB,5\nA,20\nB,\nC,1\n")
-	c1, err := ParseCond(tb.Header, "amount >= 5")
+	c1, err := Compile(tb.Header, "amount >= 5")
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := Filter(tb, []*Cond{c1})
+	f := Filter(tb, []Expr{c1})
 	aggs, err := ParseAggs(f.Header, "count,sum(amount),avg(amount):mean")
 	if err != nil {
 		t.Fatal(err)
@@ -176,8 +176,8 @@ func TestNoGoroutineLeak(t *testing.T) {
 		src := &bigCSV{}
 		tb := Read(context.Background(), io.MultiReader(strings.NewReader("a,b\n"), src), FormatCSV)
 		tb, _ = Clean(tb, CleanOptions{Types: true})
-		c, _ := ParseCond(tb.Header, "b == 1")
-		tb = Limit(Filter(tb, []*Cond{c}), 100)
+		c, _ := Compile(tb.Header, "b == 1")
+		tb = Limit(Filter(tb, []Expr{c}), 100)
 		if n, err := Write(io.Discard, tb, FormatCSV); err != nil || n != 100 {
 			t.Fatalf("n=%d err=%v", n, err)
 		}
@@ -231,6 +231,8 @@ func FuzzValues(f *testing.F) {
 	f.Add("2025-13-45")
 	f.Fuzz(func(t *testing.T, s string) {
 		Normalize(s, Infer(s))
-		ParseCond([]string{"c"}, "c "+s)
+		if e, err := Compile([]string{"c"}, s); err == nil {
+			e(Row{s})
+		}
 	})
 }
