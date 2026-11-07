@@ -43,6 +43,8 @@ func FormatFromName(name string) (Format, bool) {
 		return FormatNDJSON, true
 	case ".xlsx":
 		return FormatXLSX, true
+	case ".parquet", ".pq":
+		return FormatParquet, true
 	case ".md":
 		return FormatMarkdown, true
 	}
@@ -67,8 +69,10 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 		}
 		r, closeFn = f, f.Close
 	}
-	if f, ok := r.(*os.File); ok && isXLSX(src, f) {
-		return f, FormatXLSX, closeFn, nil // zip needs the seekable file itself
+	if f, ok := r.(*os.File); ok {
+		if rf := randomAccessFormat(src, f); rf != "" {
+			return f, rf, closeFn, nil // zip and parquet need the seekable file itself
+		}
 	}
 	br := bufio.NewReaderSize(r, 1<<20)
 	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
@@ -116,6 +120,8 @@ func Read(ctx context.Context, r io.Reader, f Format) *Table {
 		return readJSON(ctx, r, f == FormatJSON)
 	case FormatXLSX:
 		return ReadXLSX(ctx, r, "")
+	case FormatParquet:
+		return ReadParquet(ctx, r)
 	}
 	t, ch := newRoot(ctx, nil)
 	t.fail(fmt.Errorf("unsupported input format %q", f))
@@ -246,15 +252,23 @@ func scalar(v any) string {
 	return string(b)
 }
 
-// isXLSX recognises a workbook by extension or by the zip signature.
-func isXLSX(name string, f *os.File) bool {
-	if fm, _ := FormatFromName(name); fm == FormatXLSX {
-		return true
+// randomAccessFormat recognises a workbook or Parquet file by extension or
+// by its signature; these formats cannot be streamed through a pipe.
+func randomAccessFormat(name string, f *os.File) Format {
+	if fm, _ := FormatFromName(name); fm == FormatXLSX || fm == FormatParquet {
+		return fm
 	}
 	if f == os.Stdin {
-		return false
+		return ""
 	}
 	var magic [4]byte
-	n, _ := f.ReadAt(magic[:], 0)
-	return n == 4 && string(magic[:]) == "PK\x03\x04"
+	if n, _ := f.ReadAt(magic[:], 0); n == 4 {
+		switch string(magic[:]) {
+		case "PK\x03\x04":
+			return FormatXLSX
+		case "PAR1":
+			return FormatParquet
+		}
+	}
+	return ""
 }

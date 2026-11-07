@@ -26,6 +26,8 @@ run() {
 D="$WORK/datacom"
 echo "GOMEMLIMIT=$LIMIT"
 run "convert -> ndjson"            $D convert "$DATA" -f ndjson -q
+run "convert -> parquet"           $D convert "$DATA" -o "$WORK/big.parquet" -q
+run "query parquet group/agg"      $D query "$WORK/big.parquet" -snake -where "amount_kes > 5000" -group county -agg "count,sum(amount_kes)" -sort -count -q
 run "clean -snake (types) -> csv"  $D clean "$DATA" -snake -q -f csv
 run "clean -dedupe -> csv"         $D clean "$DATA" -snake -dedupe -q -f csv
 run "query filter+group+agg"       $D query "$DATA" -snake -where "amount_kes > 5000" -where "status == paid" -group county,channel -agg "count,sum(amount_kes),avg(amount_kes)" -sort -count -q
