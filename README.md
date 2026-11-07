@@ -7,10 +7,10 @@
 - **Streams everything.** Files larger than RAM are fine. Only `-sort` and the `table` / `md` views buffer rows; `-dedupe` keeps one 8-byte hash per distinct row.
 - **Reads** CSV, TSV, JSON arrays, NDJSON and Excel (`.xlsx`, one sheet at a time), plain or gzip, from a file, stdin or an http(s) URL. Format is auto-detected.
 - **Survives bad networks.** A URL download that stalls or drops is retried with backoff and resumed from the last byte, so a slow or flaky connection still yields one correct stream.
-- **Cleans** headers, whitespace, `NULL` / `N/A` / `-` markers, numbers like `"1,250.00"`, `$3,400`, `KES 3400`, `(500)`, mixed date formats, `Yes/No/Y/N` booleans, duplicate and empty rows.
+- **Cleans** headers, whitespace, `NULL` / `N/A` / `-` markers, numbers like `"1,250.00"`, `$3,400`, `KES 3400`, `(500)`, mixed date formats, `Yes/No/Y/N` booleans, duplicate and empty rows. Phone numbers and zero-padded IDs that look numeric are kept as text, never rounded or stripped.
 - **Answers questions** with filters, derived columns, joins, select, group-by, aggregates and sort, all driven by one small expression language.
 - **Watches live data.** `watch` follows a growing file or stream and prints a fresh report every window, so you can see trends as they happen.
-- **Profiles** any dataset in one readable report: types, missing values, distinct counts, min / max / mean, top values, and data-quality issues.
+- **Profiles** any dataset in one readable report: types, missing values, distinct counts, min / max / mean, top values, and data-quality issues. The duplicate count covers the first million rows and says so when the file is longer; `clean -dedupe` counts them all.
 
 ## Install
 
@@ -54,6 +54,10 @@ Output is a table on a terminal and CSV when piped. Choose with `-f table|csv|ts
 ### Join
 
 `-join other.csv -on key` or `-on left_col=right_col`. It is a left join: every left row is kept, right-hand columns are appended, and several matches yield several rows. The right-hand file is held in memory, so put the smaller one there.
+
+### Derive
+
+`-derive "name = EXPR"` adds a column, or overwrites one when the name already exists, so `-derive "status = lower(status)" -group status -agg count` folds `paid`, `Paid` and `PAID` into one group. Functions: `round(x, n)`, `abs`, `len`, `lower`, `upper`, `trim`, `concat(a, b, ...)`, `year`, `month`, `day`, `if(cond, a, b)`, `coalesce(a, b, ...)`. Column names with spaces go in brackets: `[Txn Date]`.
 
 ### Watch
 

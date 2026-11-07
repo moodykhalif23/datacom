@@ -43,6 +43,9 @@ func TestInferAndNormalize(t *testing.T) {
 		{"Room 101", KindText, "Room 101"},
 		{"(500)", KindInt, "-500"},
 		{"007", KindText, "007"},
+		{"+254712345678", KindText, "+254712345678"},
+		{"0712 345 678", KindText, "0712 345 678"},
+		{"+5", KindInt, "5"},
 		{"15/02/2025", KindDate, "2025-02-15"},
 		{"2025-06-01T10:05:00Z", KindDate, "2025-06-01T10:05:00Z"},
 		{"Yes", KindBool, "true"},
@@ -71,6 +74,40 @@ func TestCleanDedupeAndSnake(t *testing.T) {
 	}
 	if schema.Kinds[0] != KindInt {
 		t.Fatalf("kind = %v", schema.Kinds[0])
+	}
+}
+
+// A phone column is text and kept verbatim; a phone that strays into a numeric
+// column is kept too, rather than rounded into a different number.
+func TestCleanKeepsPhonesAndCodes(t *testing.T) {
+	tb := table(t, "phone,amount\n+254712345678,10\n0712 345 678,0712345678\n254712345678,30\n")
+	out, schema := Clean(tb, CleanOptions{Types: true})
+	rows := collect(out)
+	if schema.Kinds[0] != KindText || schema.Kinds[1] != KindInt {
+		t.Fatalf("kinds = %v", schema.Kinds)
+	}
+	if got := strings.Join(rows, ";"); got != "+254712345678,10;0712 345 678,0712345678;254712345678,30" {
+		t.Fatalf("rows = %q", got)
+	}
+}
+
+// A capped duplicate scan reports how many rows it covered, in the struct,
+// the text report and the issues list.
+func TestProfileDuplicateCap(t *testing.T) {
+	src := "id\n" + strings.Repeat("x\n", 30)
+	rep := Profile(table(t, src), nil, 5, 2) // cap: 2*10 = 20 rows checked
+	if rep.Rows != 30 || rep.DupChecked != 20 || rep.Duplicate != 19 {
+		t.Fatalf("rows %d checked %d dup %d", rep.Rows, rep.DupChecked, rep.Duplicate)
+	}
+	var out strings.Builder
+	rep.WriteText(&out)
+	if !strings.Contains(out.String(), "duplicate rows: 19 in the first 20 rows") ||
+		!strings.Contains(out.String(), "19 duplicate rows in the first 20 rows") {
+		t.Fatalf("text:\n%s", out.String())
+	}
+	rep = Profile(table(t, src), nil, 5, 0)
+	if rep.DupChecked != 30 || rep.Duplicate != 29 || strings.Contains(rep.Issues[len(rep.Issues)-1], "first") {
+		t.Fatalf("full scan: checked %d dup %d issues %v", rep.DupChecked, rep.Duplicate, rep.Issues)
 	}
 }
 

@@ -28,14 +28,19 @@ func Filter(in *Table, conds []Expr) *Table {
 	return out
 }
 
-// Derive appends one column per "name = expression". Later definitions
-// can use earlier ones.
+// Derive adds one column per "name = expression". A name that already exists
+// is overwritten in place, so "status = lower(status)" folds a column without
+// a rename, and later expressions see the earlier results.
 func Derive(in *Table, defs []string) (*Table, error) {
 	if len(defs) == 0 {
 		return in, nil
 	}
 	hdr := append([]string(nil), in.Header...)
-	exprs := make([]Expr, len(defs))
+	type derived struct {
+		idx int
+		e   Expr
+	}
+	cols := make([]derived, len(defs))
 	for i, d := range defs {
 		name, src, ok := strings.Cut(d, "=")
 		if name = strings.TrimSpace(name); !ok || name == "" {
@@ -45,16 +50,20 @@ func Derive(in *Table, defs []string) (*Table, error) {
 		if err != nil {
 			return nil, err
 		}
-		exprs[i] = e
-		hdr = append(hdr, name)
+		idx := Index(hdr, name)
+		if idx < 0 {
+			idx = len(hdr)
+			hdr = append(hdr, name)
+		}
+		cols[i] = derived{idx, e}
 	}
 	out, ch := in.child(hdr)
 	go func() {
 		defer close(ch)
 		for r := range in.Rows {
-			r = fit(r, len(in.Header))
-			for _, e := range exprs {
-				r = append(r, e(r).String())
+			r = fit(r, len(hdr))
+			for _, c := range cols {
+				r[c.idx] = c.e(r).String()
 			}
 			if !out.send(ch, r) {
 				return

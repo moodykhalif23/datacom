@@ -91,8 +91,7 @@ func Infer(s string) Kind {
 	}
 	if c := CleanNumber(t); c != "" {
 		if _, err := strconv.ParseInt(c, 10, 64); err == nil {
-			// Leading zeros like "007" or long IDs are codes, keep as text.
-			if len(c) > 1 && c[0] == '0' || len(c) > 15 {
+			if isCode(c) {
 				return KindText
 			}
 			return KindInt
@@ -105,6 +104,22 @@ func Infer(s string) Kind {
 		return KindDate
 	}
 	return KindText
+}
+
+// isCode reports whether an integer-looking string is really an identifier
+// that must be kept verbatim: leading zeros ("007", "0712345678"), a leading
+// + with phone-length digits ("+254712345678"), or more digits than a float64
+// holds exactly. Converting any of these would silently change the data.
+func isCode(c string) bool {
+	switch {
+	case len(c) > 1 && c[0] == '0':
+		return true
+	case len(c) > 15:
+		return true
+	case c[0] == '+' && len(c) > 7:
+		return true
+	}
+	return false
 }
 
 // Normalize rewrites a raw value into its canonical form for kind.
@@ -120,7 +135,11 @@ func normalize(s string, k Kind) (string, bool) {
 	t := strings.TrimSpace(s)
 	switch k {
 	case KindInt, KindFloat:
-		if f, ok := ParseFloat(t); ok {
+		c := CleanNumber(t)
+		if _, err := strconv.ParseInt(c, 10, 64); err == nil && isCode(c) {
+			break // a phone number or padded ID in a numeric column: keep it and report it
+		}
+		if f, err := strconv.ParseFloat(c, 64); c != "" && err == nil {
 			if k == KindInt && f == float64(int64(f)) {
 				return strconv.FormatInt(int64(f), 10), true
 			}
