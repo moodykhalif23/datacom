@@ -2,6 +2,8 @@
 
 <p align="center">A small, fast Go tool that turns large, messy data into clean, readable data.</p>
 
+- [Architecture diagrams and command flow](docs/architecture.md)
+
 - **Streams everything.** Files larger than RAM are fine. Only `-sort` and the `table` / `md` views buffer rows; `-dedupe` keeps one 8-byte hash per distinct row.
 - **Reads** CSV, TSV, JSON arrays, NDJSON and Excel (`.xlsx`, one sheet at a time), plain or gzip, from a file, stdin or an http(s) URL. Format is auto-detected.
 - **Survives bad networks.** A URL download that stalls or drops is retried with backoff and resumed from the last byte, so a slow or flaky connection still yields one correct stream.
@@ -21,6 +23,15 @@ go build -ldflags="-s -w" -o datacom .     # smaller binary: symbols stripped
 ```
 
 ## Usage
+
+First run, on the sample that ships with the repo:
+
+```sh
+datacom profile testdata/messy.csv
+datacom clean   testdata/messy.csv -snake -dedupe -monitor
+```
+
+The examples below use your own file names.
 
 ```sh
 datacom profile sales.csv.gz                 # what is in this file?
