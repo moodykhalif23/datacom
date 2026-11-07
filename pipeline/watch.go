@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -82,4 +84,41 @@ func Windows(in *Table, every time.Duration) <-chan *Table {
 		}
 	}()
 	return out
+}
+
+// Trend appends a "<col>_change" column for every non-key column, holding
+// the difference from the previous window's row with the same first
+// keyCols values ("new" when there was none). It returns the rows seen,
+// to pass as prev on the next window.
+func Trend(in *Table, keyCols int, prev map[string]Row) (*Table, map[string]Row) {
+	hdr := append([]string(nil), in.Header...)
+	for _, h := range in.Header[keyCols:] {
+		hdr = append(hdr, h+"_change")
+	}
+	seen := map[string]Row{}
+	out, ch := in.child(hdr)
+	go func() {
+		defer close(ch)
+		for r := range in.Rows {
+			r = fit(r, len(in.Header))
+			key := strings.Join(r[:keyCols], "\x00")
+			seen[key] = r
+			last, ok := prev[key]
+			for i := keyCols; i < len(in.Header); i++ {
+				switch cur, err := strconv.ParseFloat(r[i], 64); {
+				case !ok:
+					r = append(r, "new")
+				case err != nil:
+					r = append(r, "")
+				default:
+					before, _ := strconv.ParseFloat(last.Get(i), 64)
+					r = append(r, strconv.FormatFloat(cur-before, 'f', -1, 64))
+				}
+			}
+			if !out.send(ch, r) {
+				return
+			}
+		}
+	}()
+	return out, seen
 }

@@ -284,11 +284,16 @@ func report(t *pipeline.Table, o opts) (*pipeline.Table, error) {
 }
 
 // watch prints one report per time window until the input ends or Ctrl-C.
+// Grouped reports also show each value's change since the previous window.
 func watch(t *pipeline.Table, o opts, out io.Writer, f pipeline.Format) error {
+	var prev map[string]pipeline.Row
 	for w := range pipeline.Windows(t, o.every) {
 		w, err := report(w, o)
 		if err != nil {
 			return err
+		}
+		if o.group != "" || o.agg != "" {
+			w, prev = pipeline.Trend(w, len(splitList(o.group)), prev)
 		}
 		fmt.Fprintf(out, "\n%s  (last %s)\n", time.Now().Format("2006-01-02 15:04:05"), o.every)
 		if _, err := pipeline.Write(out, w, f); err != nil {

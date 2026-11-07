@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -12,7 +13,7 @@ import (
 	"time"
 )
 
-// FormatXLSX is Excel input. Only reading is supported.
+// FormatXLSX is an Excel workbook; reading takes one sheet, writing makes one.
 const FormatXLSX Format = "xlsx"
 
 // ReadXLSX streams one sheet of a workbook: by name, by 1-based index, or
@@ -276,4 +277,75 @@ func colIndex(ref string) int {
 		n = n*26 + int(ref[i]-'A'+1)
 	}
 	return n - 1
+}
+
+// writeXLSX streams t as a one-sheet workbook. Numbers and booleans keep
+// their types, ISO dates become real Excel dates, everything else is text.
+func writeXLSX(w io.Writer, t *Table) (int, error) {
+	zw := zip.NewWriter(w)
+	static := map[string]string{
+		"[Content_Types].xml":        `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
+		"_rels/.rels":                `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+		"xl/workbook.xml":            `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="data" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+		"xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+		"xl/styles.xml":              `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font/></fonts><fills count="1"><fill/></fills><borders count="1"><border/></borders><cellXfs count="3"><xf numFmtId="0"/><xf numFmtId="14" applyNumberFormat="1"/><xf numFmtId="22" applyNumberFormat="1"/></cellXfs></styleSheet>`,
+	}
+	for name, body := range static {
+		f, err := zw.Create(name)
+		if err == nil {
+			_, err = io.WriteString(f, body)
+		}
+		if err != nil {
+			return 0, err
+		}
+	}
+	sheet, err := zw.Create("xl/worksheets/sheet1.xml")
+	if err != nil {
+		return 0, err
+	}
+	bw := bufio.NewWriterSize(sheet, 1<<20)
+	bw.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`)
+	writeRow := func(r Row, header bool) {
+		bw.WriteString("<row>")
+		for _, v := range r {
+			bw.WriteString(xlsxCell(v, header))
+		}
+		bw.WriteString("</row>")
+	}
+	writeRow(Row(t.Header), true)
+	n := 0
+	for r := range t.Rows {
+		writeRow(r, false)
+		n++
+	}
+	bw.WriteString("</sheetData></worksheet>")
+	if err := bw.Flush(); err != nil {
+		return n, err
+	}
+	return n, zw.Close()
+}
+
+// xlsxCell encodes one value; a true forceText keeps header numbers as text.
+func xlsxCell(v string, forceText bool) string {
+	switch {
+	case v == "":
+		return "<c/>"
+	case forceText:
+	case v == "true" || v == "false":
+		return `<c t="b"><v>` + strconv.FormatBool(v == "true") + "</v></c>"
+	case len(v) <= 20 && jsonNumber.MatchString(v):
+		return "<c><v>" + v + "</v></c>"
+	case len(v) >= 10 && v[4] == '-' && v[7] == '-':
+		if d, ok := ParseDate(v); ok {
+			serial := d.Sub(time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)).Hours() / 24
+			style := "1"
+			if serial != float64(int64(serial)) {
+				style = "2"
+			}
+			return `<c s="` + style + `"><v>` + strconv.FormatFloat(serial, 'f', -1, 64) + "</v></c>"
+		}
+	}
+	var b strings.Builder
+	xml.EscapeText(&b, []byte(v))
+	return `<c t="inlineStr"><is><t xml:space="preserve">` + b.String() + "</t></is></c>"
 }
