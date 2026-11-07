@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -109,6 +111,14 @@ func (m *Monitor) progress() string {
 }
 
 func memMB() uint64 {
+	if b, err := os.ReadFile("/proc/self/status"); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			if kb, ok := strings.CutPrefix(line, "VmHWM:"); ok {
+				n, _ := strconv.ParseUint(strings.TrimSpace(strings.TrimSuffix(kb, "kB")), 10, 64)
+				return n / 1024
+			}
+		}
+	}
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	return ms.Sys / 1e6
@@ -142,11 +152,9 @@ type RunReport struct {
 func (m *Monitor) Report() RunReport {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
 	r := RunReport{
 		Seconds: time.Since(m.start).Seconds(), RowsIn: m.RowsIn.Load(), RowsOut: m.RowsOut.Load(),
-		Bytes: m.Bytes.Load(), PeakMB: ms.Sys / 1e6,
+		Bytes: m.Bytes.Load(), PeakMB: memMB(),
 		Padded: m.Padded.Load(), Trimmed: m.Trimmed.Load(), Empty: m.Empty.Load(),
 		Dupes: m.Dupes.Load(), Unmatched: m.Unmatched.Load(), Notes: m.notes,
 	}
