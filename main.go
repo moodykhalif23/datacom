@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sozuri/datacom/pipeline"
+	"datacom/pipeline"
 )
 
 const usage = `datacom — small, fast data cleaner for big files (CSV, TSV, JSON, NDJSON, gzip)

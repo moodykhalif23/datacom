@@ -1,7 +1,6 @@
 # datacom
 
 A small, fast, dependency-free Go tool that turns large, messy data into clean, readable data.
-Built for finance teams, large organisations and public bodies that receive big CSV / JSON exports and need answers, not spreadsheets that crash.
 
 - **Streams everything.** Files larger than RAM are fine. Only `-sort` and the `table` / `md` views buffer rows; `-dedupe` keeps one 8-byte hash per distinct row.
 - **Reads** CSV, TSV, JSON arrays, NDJSON, plain or gzip, from a file or stdin. Format is auto-detected.
@@ -13,9 +12,9 @@ Built for finance teams, large organisations and public bodies that receive big 
 ## Install
 
 ```sh
-go install github.com/sozuri/datacom@latest
-# or
-git clone https://github.com/sozuri/datacom && cd datacom && go build -o datacom .
+git clone <your-repo-url> datacom && cd datacom && go build -o datacom .
+
+When you publish, set the module path in `go.mod` to your repository (for example `github.com/<you>/datacom`) so `go install` works.
 ```
 
 ## Usage
@@ -35,14 +34,14 @@ Output is a table on a terminal and CSV when piped. Choose with `-f table|csv|ts
 
 `-where` is repeatable and the clauses are ANDed.
 
-| Expression | Meaning |
-| --- | --- |
-| `amount > 1000` | numeric compare: `== != > >= < <=` |
-| `region == Nairobi` | text compare, case-insensitive |
-| `name ~ ltd` | contains |
-| `email =~ @.*\.go\.ke$` | regex (`!~` negates) |
-| `date >= 2025-01-01` | ISO dates compare as text after cleaning |
-| `phone not null` / `phone is null` | missing-value checks |
+| Expression                             | Meaning                                  |
+| -------------------------------------- | ---------------------------------------- |
+| `amount > 1000`                      | numeric compare: `== != > >= < <=`     |
+| `region == Nairobi`                  | text compare, case-insensitive           |
+| `name ~ ltd`                         | contains                                 |
+| `email =~ @.*\.go\.ke$`              | regex (`!~` negates)                   |
+| `date >= 2025-01-01`                 | ISO dates compare as text after cleaning |
+| `phone not null` / `phone is null` | missing-value checks                     |
 
 ### Aggregates
 
@@ -68,7 +67,7 @@ Add `-json` for a machine-readable report.
 ## As a library
 
 ```go
-import "github.com/sozuri/datacom/pipeline"
+import "datacom/pipeline"
 
 r, format, closeFn, _ := pipeline.Open("big.csv.gz", pipeline.FormatAuto)
 defer closeFn()
@@ -96,9 +95,9 @@ MIT
 
 3 million rows, 161 MB CSV with messy amounts (`"1,250.00"`, `KES 3400.00`), one core, laptop:
 
-| command | time | peak memory |
-| --- | --- | --- |
-| `query` group-by + sum/avg | 11 s | 13 MB |
-| `convert` CSV → NDJSON | 15 s | 12 MB |
-| `clean -dedupe` → CSV | 12 s | 161 MB |
-| `profile` | 16 s | 124 MB |
+| command                      | time | peak memory |
+| ---------------------------- | ---- | ----------- |
+| `query` group-by + sum/avg | 11 s | 13 MB       |
+| `convert` CSV → NDJSON    | 15 s | 12 MB       |
+| `clean -dedupe` → CSV     | 12 s | 161 MB      |
+| `profile`                  | 16 s | 124 MB      |
