@@ -20,41 +20,35 @@ const FormatXLSX Format = "xlsx"
 // the first sheet when sheet is "".
 func ReadXLSX(ctx context.Context, r io.Reader, sheet string) *Table {
 	t, ch := newRoot(ctx, nil)
-	f, ok := r.(*os.File)
-	if !ok {
-		tmp, err := os.CreateTemp("", "datacom-*.xlsx")
-		if err == nil {
-			defer os.Remove(tmp.Name())
-			defer tmp.Close()
-			_, err = io.Copy(tmp, r)
-		}
-		if err != nil {
-			t.fail(err)
-			close(ch)
-			return t
-		}
-		f = tmp
-	}
-	st, err := f.Stat()
+	f, size, cleanup, err := seekable(r)
 	if err != nil {
 		t.fail(err)
 		close(ch)
 		return t
 	}
-	zr, err := zip.NewReader(f, st.Size())
-	if err != nil {
-		t.fail(fmt.Errorf("not an xlsx file: %w", err))
-		close(ch)
-		return t
+	zr, err := zip.NewReader(f, size)
+	if err == nil {
+		var wb *workbook
+		if wb, err = loadWorkbook(zr, sheet); err == nil {
+			rows := make(chan Row, chanBuf)
+			go func() {
+				defer cleanup()
+				t.fail(wb.stream(ctx, rows))
+				close(rows)
+			}()
+			return forward(t, ch, rows)
+		}
+	} else {
+		err = fmt.Errorf("not an xlsx file: %w", err)
 	}
-	wb, err := loadWorkbook(zr, sheet)
-	if err != nil {
-		t.fail(err)
-		close(ch)
-		return t
-	}
-	rows := make(chan Row, chanBuf)
-	go func() { t.fail(wb.stream(ctx, rows)); close(rows) }()
+	cleanup()
+	t.fail(err)
+	close(ch)
+	return t
+}
+
+// forward takes the first row as the header and streams the rest.
+func forward(t *Table, ch chan Row, rows <-chan Row) *Table {
 	hdr, ok := <-rows
 	if !ok {
 		close(ch)
@@ -65,6 +59,8 @@ func ReadXLSX(ctx context.Context, r io.Reader, sheet string) *Table {
 		defer close(ch)
 		for r := range rows {
 			if !t.send(ch, r) {
+				for range rows { // drain so the producer can finish and clean up
+				}
 				return
 			}
 		}
@@ -352,4 +348,29 @@ func xlsxCell(v string, forceText bool) string {
 	var b strings.Builder
 	xml.EscapeText(&b, []byte(v))
 	return `<c t="inlineStr"><is><t xml:space="preserve">` + b.String() + "</t></is></c>"
+}
+
+// seekable returns r as a file with random access, spooling stdin or a
+// network stream to a temporary file that cleanup removes.
+func seekable(r io.Reader) (*os.File, int64, func(), error) {
+	f, ok := r.(*os.File)
+	cleanup := func() {}
+	if !ok {
+		tmp, err := os.CreateTemp("", "datacom-*")
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		cleanup = func() { tmp.Close(); os.Remove(tmp.Name()) }
+		if _, err := io.Copy(tmp, r); err != nil {
+			cleanup()
+			return nil, 0, nil, err
+		}
+		f = tmp
+	}
+	st, err := f.Stat()
+	if err != nil {
+		cleanup()
+		return nil, 0, nil, err
+	}
+	return f, st.Size(), cleanup, nil
 }

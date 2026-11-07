@@ -27,6 +27,8 @@ func Write(w io.Writer, t *Table, f Format) (int, error) {
 		n, err = writeTable(bw, t, f == FormatMarkdown)
 	case FormatXLSX:
 		n, err = writeXLSX(bw, t)
+	case FormatParquet:
+		n, err = writeParquet(bw, t)
 	default:
 		return 0, fmt.Errorf("unsupported output format %q", f)
 	}
