@@ -3,6 +3,7 @@ package pipeline
 import (
 	"strconv"
 	"strings"
+	"time"
 )
 
 type CleanOptions struct {
@@ -40,15 +41,25 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 	go func() {
 		defer close(ch)
 		buf := make([]Row, 0, o.Sample)
-		for r := range in.Rows {
-			buf = append(buf, r)
-			if o.Types {
-				for i := 0; i < len(hdr) && i < len(r); i++ {
-					schema.Kinds[i] = Widen(schema.Kinds[i], Infer(r[i]))
+		var wait <-chan time.Time // live inputs must not stall waiting for a full sample
+	sample:
+		for len(buf) < o.Sample {
+			select {
+			case r, ok := <-in.Rows:
+				if !ok {
+					break sample
 				}
-			}
-			if len(buf) == o.Sample {
-				break
+				buf = append(buf, r)
+				if o.Types {
+					for i := 0; i < len(hdr) && i < len(r); i++ {
+						schema.Kinds[i] = Widen(schema.Kinds[i], Infer(r[i]))
+					}
+				}
+				if wait == nil {
+					wait = time.After(500 * time.Millisecond)
+				}
+			case <-wait:
+				break sample
 			}
 		}
 		for i, k := range schema.Kinds {

@@ -1,4 +1,4 @@
-// datacom turns large, messy CSV/JSON files into clean, readable data.
+// datacom turns large, messy CSV/JSON/Excel files into clean, readable data.
 // It streams, so files bigger than memory are fine.
 package main
 
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,50 +17,56 @@ import (
 	"github.com/moodykhalif23/datacom/pipeline"
 )
 
-const usage = `datacom — small, fast data cleaner for big files (CSV, TSV, JSON, NDJSON, gzip)
+const usage = `datacom — small, fast data cleaner for big files (CSV, TSV, JSON, NDJSON, Excel, gzip)
 
 usage:
   datacom profile [source]                     summarize a dataset
   datacom clean   [source] [-o out] [flags]    normalize and dedupe
-  datacom query   [source] [flags]             select, filter, group, sort
+  datacom query   [source] [flags]             select, filter, derive, join, group, sort
   datacom convert [source] -f json|csv|...     change format
+  datacom watch   [source] -every 10s [flags]  follow a growing file; report per window
 
 source is a file path, an http(s) URL, or stdin when omitted. All commands accept:
   -f  output format: table (default on a terminal), csv, tsv, json, ndjson, md
-  -i  input format (default: auto-detect)
-  -o  write to file instead of stdout
-  -q  quiet: no row count on stderr
+  -i  input format (default: auto-detect)      -sheet  Excel sheet name or number
+  -o  write to file instead of stdout          -q      quiet: no row count on stderr
 
-clean / query flags:
+clean / query / watch flags:
   -snake        snake_case headers           -no-types   skip type normalization
   -dedupe       drop duplicate rows          -keep-empty keep all-empty rows
+  -join FILE    left join another file       -on KEY     join key, or "left=right"
+  -derive "name = EXPR"   add a column; repeatable, e.g. "margin = revenue - cost",
+                "band = if(amount > 1000, high, low)", "yr = year(date)"
+  -where EXPR   keep rows where EXPR is true; repeatable, ANDed, e.g. "amount > 1000",
+                "name ~ ltd", "email =~ @gov\.ke$", "phone not null", "a > 1 and b == x"
   -select a,b   keep columns (old:new renames)
-  -where EXPR   filter; repeatable, ANDed    e.g. "amount > 1000", "name ~ ltd",
-                "date >= 2025-01-01", "email =~ @gov\.ke$", "phone not null"
   -group a,b    group by columns
   -agg SPEC     count, sum(x), avg(x), min(x), max(x), distinct(x), first(x):alias
   -sort col     sort by column; "-col" for descending (buffers rows)
   -limit n      stop after n rows
+  -every 10s    watch: window length (watch only)
 
 profile flags:
   -top n        values to list per column (5)   -json   machine-readable report
 
 examples:
-  datacom profile sales.csv.gz
+  datacom profile sales.xlsx -sheet 2
   datacom clean raw.csv -snake -dedupe -o clean.csv
-  datacom query sales.csv -where "amount > 1000" -group region -agg "count,sum(amount)" -sort -sum_amount
-  datacom convert https://example.org/export.json -f csv > export.csv
+  datacom query sales.csv -join branches.csv -on branch_id -derive "net = amount * 0.84" \
+                -where "net > 1000" -group region -agg "count,sum(net)" -sort -sum_net
+  datacom watch events.ndjson -every 1m -group status -agg count
 `
 
 type opts struct {
-	in, out, format, inFormat string
-	quiet, snake, dedupe      bool
-	noTypes, keepEmpty        bool
-	selectCols, group, agg    string
-	sortKey                   string
-	limit, top                int
-	jsonReport                bool
-	where                     multi
+	in, out, format, inFormat, sheet string
+	quiet, snake, dedupe             bool
+	noTypes, keepEmpty               bool
+	selectCols, group, agg, sortKey  string
+	join, on                         string
+	limit, top                       int
+	jsonReport                       bool
+	every                            time.Duration
+	where, derive                    multi
 }
 
 type multi []string
@@ -79,19 +86,24 @@ func main() {
 	fs.StringVar(&o.out, "o", "", "")
 	fs.StringVar(&o.format, "f", "", "")
 	fs.StringVar(&o.inFormat, "i", "auto", "")
+	fs.StringVar(&o.sheet, "sheet", "", "")
 	fs.BoolVar(&o.quiet, "q", false, "")
 	fs.BoolVar(&o.snake, "snake", false, "")
 	fs.BoolVar(&o.dedupe, "dedupe", false, "")
 	fs.BoolVar(&o.noTypes, "no-types", false, "")
 	fs.BoolVar(&o.keepEmpty, "keep-empty", false, "")
-	fs.StringVar(&o.selectCols, "select", "", "")
+	fs.StringVar(&o.join, "join", "", "")
+	fs.StringVar(&o.on, "on", "", "")
+	fs.Var(&o.derive, "derive", "")
 	fs.Var(&o.where, "where", "")
+	fs.StringVar(&o.selectCols, "select", "", "")
 	fs.StringVar(&o.group, "group", "", "")
 	fs.StringVar(&o.agg, "agg", "", "")
 	fs.StringVar(&o.sortKey, "sort", "", "")
 	fs.IntVar(&o.limit, "limit", 0, "")
 	fs.IntVar(&o.top, "top", 5, "")
 	fs.BoolVar(&o.jsonReport, "json", false, "")
+	fs.DurationVar(&o.every, "every", 10*time.Second, "")
 
 	// Accept the source before or after the flags.
 	args := os.Args[2:]
@@ -118,17 +130,16 @@ func main() {
 
 func run(ctx context.Context, cmd string, o opts) error {
 	switch cmd {
-	case "profile", "clean", "query", "convert":
+	case "profile", "clean", "query", "convert", "watch":
 	default:
-		return fmt.Errorf("unknown command %q (try: profile, clean, query, convert)", cmd)
+		return fmt.Errorf("unknown command %q (try: profile, clean, query, convert, watch)", cmd)
 	}
 	start := time.Now()
-	r, inFmt, closeIn, err := pipeline.Open(ctx, o.in, pipeline.Format(o.inFormat))
+	t, closeIn, err := open(ctx, o, o.in, cmd == "watch")
 	if err != nil {
 		return err
 	}
 	defer closeIn()
-	t := pipeline.Read(ctx, r, inFmt)
 
 	out := os.Stdout
 	if o.out != "" {
@@ -145,27 +156,17 @@ func run(ctx context.Context, cmd string, o opts) error {
 		switch {
 		case o.out != "":
 			outFmt, ok = pipeline.FormatFromName(o.out)
-		case isTerminal(os.Stdout) && cmd != "convert":
+		case cmd == "watch" || isTerminal(os.Stdout) && cmd != "convert":
 			outFmt, ok = pipeline.FormatTable, true
 		}
 		if !ok {
-			outFmt = inFmt
-		}
-		if outFmt == pipeline.FormatJSON {
-			outFmt = pipeline.FormatNDJSON
+			outFmt = pipeline.FormatCSV
 		}
 	}
 
-	var schema *pipeline.Schema
-	if cmd != "convert" {
-		t, schema = pipeline.Clean(t, pipeline.CleanOptions{
-			SnakeHeaders: o.snake,
-			Dedupe:       o.dedupe,
-			DropEmpty:    !o.keepEmpty,
-			Types:        !o.noTypes || cmd == "profile",
-		})
-	}
 	if cmd == "profile" {
+		var schema *pipeline.Schema
+		t, schema = pipeline.Clean(t, pipeline.CleanOptions{SnakeHeaders: o.snake, DropEmpty: true, Types: true})
 		rep := pipeline.Profile(t, schema.Kinds, o.top, 0)
 		if err := t.Err(); err != nil {
 			return err
@@ -177,9 +178,17 @@ func run(ctx context.Context, cmd string, o opts) error {
 		return nil
 	}
 	if cmd != "convert" {
-		if t, err = shape(t, o); err != nil {
+		var done func() error
+		if t, done, err = shape(ctx, t, o); err != nil {
 			return err
 		}
+		defer done()
+	}
+	if cmd == "watch" {
+		return watch(t, o, out, outFmt)
+	}
+	if t, err = report(t, o); err != nil {
+		return err
 	}
 	n, err := pipeline.Write(out, t, outFmt)
 	if err != nil {
@@ -194,23 +203,66 @@ func run(ctx context.Context, cmd string, o opts) error {
 	return nil
 }
 
-// shape applies the query stages in order: where, select, group, sort, limit.
-func shape(t *pipeline.Table, o opts) (*pipeline.Table, error) {
+// open reads a source into a raw table (a followed file for watch).
+func open(ctx context.Context, o opts, src string, follow bool) (*pipeline.Table, func() error, error) {
+	if follow {
+		r, err := pipeline.Follow(ctx, src)
+		if err != nil {
+			return nil, nil, err
+		}
+		f, _ := pipeline.FormatFromName(src)
+		if f == "" {
+			f = pipeline.FormatNDJSON
+		}
+		return pipeline.Read(ctx, r, f), func() error { return nil }, nil
+	}
+	r, f, closeFn, err := pipeline.Open(ctx, src, pipeline.Format(o.inFormat))
+	if err != nil {
+		return nil, nil, err
+	}
+	if f == pipeline.FormatXLSX {
+		return pipeline.ReadXLSX(ctx, r, o.sheet), closeFn, nil
+	}
+	return pipeline.Read(ctx, r, f), closeFn, nil
+}
+
+// shape applies the streaming stages: clean, join, derive, where, select.
+// The returned func releases the joined file once the pipeline is done.
+func shape(ctx context.Context, t *pipeline.Table, o opts) (*pipeline.Table, func() error, error) {
+	clean := pipeline.CleanOptions{SnakeHeaders: o.snake, Dedupe: o.dedupe, DropEmpty: !o.keepEmpty, Types: !o.noTypes}
+	t, _ = pipeline.Clean(t, clean)
+	done := func() error { return nil }
+	if o.join != "" {
+		right, closeRight, err := open(ctx, o, o.join, false)
+		if err != nil {
+			return nil, nil, err
+		}
+		done = closeRight
+		right, _ = pipeline.Clean(right, clean)
+		if t, err = pipeline.Join(t, right, o.on); err != nil {
+			return nil, nil, err
+		}
+	}
 	var err error
+	if t, err = pipeline.Derive(t, o.derive); err != nil {
+		return nil, nil, err
+	}
 	if len(o.where) > 0 {
-		conds := make([]*pipeline.Cond, len(o.where))
+		conds := make([]pipeline.Expr, len(o.where))
 		for i, w := range o.where {
-			if conds[i], err = pipeline.ParseCond(t.Header, w); err != nil {
-				return nil, err
+			if conds[i], err = pipeline.Compile(t.Header, w); err != nil {
+				return nil, nil, err
 			}
 		}
 		t = pipeline.Filter(t, conds)
 	}
-	if o.selectCols != "" {
-		if t, err = pipeline.Select(t, splitList(o.selectCols)); err != nil {
-			return nil, err
-		}
-	}
+	t, err = pipeline.Select(t, splitList(o.selectCols))
+	return t, done, err
+}
+
+// report applies the stages that need a bounded input: group, sort, limit.
+func report(t *pipeline.Table, o opts) (*pipeline.Table, error) {
+	var err error
 	if o.group != "" || o.agg != "" {
 		if o.agg == "" {
 			o.agg = "count"
@@ -229,6 +281,21 @@ func shape(t *pipeline.Table, o opts) (*pipeline.Table, error) {
 		}
 	}
 	return pipeline.Limit(t, o.limit), nil
+}
+
+// watch prints one report per time window until the input ends or Ctrl-C.
+func watch(t *pipeline.Table, o opts, out io.Writer, f pipeline.Format) error {
+	for w := range pipeline.Windows(t, o.every) {
+		w, err := report(w, o)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "\n%s  (last %s)\n", time.Now().Format("2006-01-02 15:04:05"), o.every)
+		if _, err := pipeline.Write(out, w, f); err != nil {
+			return err
+		}
+	}
+	return t.Err()
 }
 
 func splitList(s string) []string {
