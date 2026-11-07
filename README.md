@@ -108,11 +108,6 @@ Row counts match between `query -agg count` and `convert` output. Fuzz targets c
 
 Only three things grow with the data: `-dedupe` keeps one 8-byte hash per distinct row, `-group` keeps one accumulator per group, and `-sort` buffers the rows it sorts. Everything else is constant per row.
 
-## Roadmap
-
-- Parquet input is under discussion: a correct reader needs a dependency or thousands of lines, and this tool stays small.
-- Output to Excel, and windowed trend lines (change versus the previous window) for `watch`.
-
 ## License
 
 MIT
