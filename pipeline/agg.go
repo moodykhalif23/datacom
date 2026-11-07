@@ -193,6 +193,9 @@ func Aggregate(in *Table, groupBy []string, aggs []AggSpec) (*Table, error) {
 				g.accs[j].add(r.Get(a.Col), a)
 			}
 		}
+		if mon := in.monitor(); mon != nil && len(groups) > 100_000 {
+			mon.Note("group-by produced %s groups; memory grows with group count.", commas(int64(len(groups))))
+		}
 		for _, k := range order {
 			g := groups[k]
 			row := append(make(Row, 0, len(hdr)), g.key...)
@@ -222,6 +225,9 @@ func Sort(in *Table, key string) (*Table, error) {
 		var rows []Row
 		for r := range in.Rows {
 			rows = append(rows, r)
+		}
+		if mon := in.monitor(); mon != nil && len(rows) > 100_000 {
+			mon.Note("sort buffered %s rows in memory; sort after -group or -limit when the input is large.", commas(int64(len(rows))))
 		}
 		sort.SliceStable(rows, func(a, b int) bool {
 			c := compare(rows[a].Get(i), rows[b].Get(i))

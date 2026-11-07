@@ -105,7 +105,7 @@ func TestJSONRoundTrip(t *testing.T) {
 	if n, err := Write(&buf, tb, FormatCSV); err != nil || n != 2 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	if got := buf.String(); got != "a,b\nx,2\ny,\n" {
+	if got := buf.String(); got != "b,a\n2,x\n,y\n" {
 		t.Fatalf("got %q", got)
 	}
 	tb = table(t, "id,ok,name\n1,true,x\n")

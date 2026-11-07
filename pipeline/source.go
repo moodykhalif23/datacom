@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -185,12 +184,13 @@ func readJSON(ctx context.Context, r io.Reader, array bool) *Table {
 			}
 		}
 	}
+	var keys []string
 	first := map[string]any{}
 	err := io.EOF
 	if !array || dec.More() {
-		err = dec.Decode(&first)
+		keys, first, err = firstObject(dec)
 	}
-	t, ch := newRoot(ctx, sortedKeys(first))
+	t, ch := newRoot(ctx, keys)
 	if err != nil {
 		if err != io.EOF {
 			t.fail(fmt.Errorf("read first object: %w", err))
@@ -220,13 +220,35 @@ func readJSON(ctx context.Context, r io.Reader, array bool) *Table {
 	return t
 }
 
-func sortedKeys(m map[string]any) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+// firstObject decodes one object token by token so the column order is
+// the order the keys were written in.
+func firstObject(dec *json.Decoder) ([]string, map[string]any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, nil, err
 	}
-	sort.Strings(keys)
-	return keys
+	if d, ok := tok.(json.Delim); !ok || d != '{' {
+		return nil, nil, fmt.Errorf("json: expected an object, got %v", tok)
+	}
+	var keys []string
+	m := map[string]any{}
+	for dec.More() {
+		k, err := dec.Token()
+		if err != nil {
+			return nil, nil, err
+		}
+		var v any
+		if err := dec.Decode(&v); err != nil {
+			return nil, nil, err
+		}
+		name := fmt.Sprint(k)
+		if _, dup := m[name]; !dup {
+			keys = append(keys, name)
+		}
+		m[name] = v
+	}
+	_, err = dec.Token() // closing brace
+	return keys, m, err
 }
 
 func objToRow(m map[string]any, header []string) Row {

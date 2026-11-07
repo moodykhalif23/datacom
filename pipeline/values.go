@@ -116,7 +116,7 @@ func Normalize(s string, k Kind) string {
 	switch k {
 	case KindInt, KindFloat:
 		if f, ok := ParseFloat(t); ok {
-			if k == KindInt {
+			if k == KindInt && f == float64(int64(f)) {
 				return strconv.FormatInt(int64(f), 10)
 			}
 			return strconv.FormatFloat(f, 'f', -1, 64)
@@ -201,4 +201,28 @@ func stripCurrency(s string) string {
 		return strings.TrimSpace(s[:i])
 	}
 	return s
+}
+
+// tally counts the kinds seen in a column sample; kind picks the column
+// type by majority so a few stray values do not turn a numeric column
+// into text. Those strays are what the monitor reports.
+type tally [6]int
+
+func (t *tally) add(k Kind) { t[k]++ }
+
+func (t *tally) kind() Kind {
+	numeric := t[KindInt] + t[KindFloat]
+	best, n := KindText, t[KindText]
+	for _, c := range []struct {
+		k Kind
+		n int
+	}{{KindDate, t[KindDate]}, {KindBool, t[KindBool]}, {KindInt, numeric}} {
+		if c.n > n {
+			best, n = c.k, c.n
+		}
+	}
+	if best == KindInt && t[KindFloat] > 0 {
+		return KindFloat
+	}
+	return best
 }

@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -25,11 +27,14 @@ usage:
   datacom query   [source] [flags]             select, filter, derive, join, group, sort
   datacom convert [source] -f json|csv|...     change format
   datacom watch   [source] -every 10s [flags]  follow a growing file; report per window
+  datacom version                              build details for bug reports
 
 source is a file path, an http(s) URL, or stdin when omitted. All commands accept:
   -f  output format: table (default on a terminal), csv, tsv, json, ndjson, md
   -i  input format (default: auto-detect)      -sheet  Excel sheet name or number
   -o  write to file instead of stdout          -q      quiet: no row count on stderr
+  -monitor  live progress on stderr and a report of every hiccup at the end
+  -log FILE append the same report as one JSON line per run (errors included)
 
 clean / query / watch flags:
   -snake        snake_case headers           -no-types   skip type normalization
@@ -59,6 +64,8 @@ examples:
 
 type opts struct {
 	in, out, format, inFormat, sheet string
+	logFile                          string
+	monitor                          bool
 	quiet, snake, dedupe             bool
 	noTypes, keepEmpty               bool
 	selectCols, group, agg, sortKey  string
@@ -80,6 +87,10 @@ func main() {
 		os.Exit(2)
 	}
 	cmd := os.Args[1]
+	if cmd == "version" {
+		fmt.Println(versionString())
+		return
+	}
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	var o opts
@@ -103,6 +114,8 @@ func main() {
 	fs.IntVar(&o.limit, "limit", 0, "")
 	fs.IntVar(&o.top, "top", 5, "")
 	fs.BoolVar(&o.jsonReport, "json", false, "")
+	fs.BoolVar(&o.monitor, "monitor", false, "")
+	fs.StringVar(&o.logFile, "log", "", "")
 	fs.DurationVar(&o.every, "every", 10*time.Second, "")
 
 	// Accept the source before or after the flags.
@@ -135,11 +148,23 @@ func run(ctx context.Context, cmd string, o opts) error {
 		return fmt.Errorf("unknown command %q (try: profile, clean, query, convert, watch)", cmd)
 	}
 	start := time.Now()
-	t, closeIn, err := open(ctx, o, o.in, cmd == "watch")
+	var mon *pipeline.Monitor
+	if o.monitor || o.logFile != "" {
+		mon = pipeline.NewMonitor()
+		ctx = pipeline.WithMonitor(ctx, mon)
+	}
+	t, closeIn, err := open(ctx, o, mon, o.in, cmd == "watch")
 	if err != nil {
 		return err
 	}
 	defer closeIn()
+	if mon != nil {
+		stop := make(chan struct{})
+		if o.monitor {
+			go mon.Live(os.Stderr, time.Second, isTerminal(os.Stderr), stop)
+		}
+		defer func() { close(stop); finish(mon, o) }()
+	}
 
 	out := os.Stdout
 	if o.out != "" {
@@ -204,7 +229,7 @@ func run(ctx context.Context, cmd string, o opts) error {
 }
 
 // open reads a source into a raw table (a followed file for watch).
-func open(ctx context.Context, o opts, src string, follow bool) (*pipeline.Table, func() error, error) {
+func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow bool) (*pipeline.Table, func() error, error) {
 	if follow {
 		r, err := pipeline.Follow(ctx, src)
 		if err != nil {
@@ -214,11 +239,14 @@ func open(ctx context.Context, o opts, src string, follow bool) (*pipeline.Table
 		if f == "" {
 			f = pipeline.FormatNDJSON
 		}
-		return pipeline.Read(ctx, r, f), func() error { return nil }, nil
+		return pipeline.Read(ctx, meter(mon, r), f), func() error { return nil }, nil
 	}
 	r, f, closeFn, err := pipeline.Open(ctx, src, pipeline.Format(o.inFormat))
 	if err != nil {
 		return nil, nil, err
+	}
+	if f != pipeline.FormatXLSX && f != pipeline.FormatParquet {
+		r = meter(mon, r) // random-access formats bypass the byte meter
 	}
 	if f == pipeline.FormatXLSX {
 		return pipeline.ReadXLSX(ctx, r, o.sheet), closeFn, nil
@@ -233,7 +261,7 @@ func shape(ctx context.Context, t *pipeline.Table, o opts) (*pipeline.Table, fun
 	t, _ = pipeline.Clean(t, clean)
 	done := func() error { return nil }
 	if o.join != "" {
-		right, closeRight, err := open(ctx, o, o.join, false)
+		right, closeRight, err := open(pipeline.WithMonitor(ctx, nil), o, nil, o.join, false) // lookup rows are not "rows in"
 		if err != nil {
 			return nil, nil, err
 		}
@@ -317,4 +345,39 @@ func splitList(s string) []string {
 func isTerminal(f *os.File) bool {
 	fi, err := f.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// version is set by -ldflags "-X main.version=v1.2.3"; otherwise the module
+// version from go install, or "dev".
+var version = "dev"
+
+func versionString() string {
+	v := version
+	if bi, ok := debug.ReadBuildInfo(); ok && v == "dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		v = bi.Main.Version
+	}
+	return fmt.Sprintf("datacom %s (%s, %s/%s)", v, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+}
+
+func meter(mon *pipeline.Monitor, r io.Reader) io.Reader {
+	if mon == nil {
+		return r
+	}
+	return mon.Meter(r)
+}
+
+// finish prints the monitor report and appends it to the JSON log.
+func finish(mon *pipeline.Monitor, o opts) {
+	rep := mon.Report()
+	if o.monitor {
+		rep.WriteText(os.Stderr)
+	}
+	if o.logFile != "" {
+		if f, err := os.OpenFile(o.logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			rep.WriteJSON(f)
+			f.Close()
+		} else {
+			fmt.Fprintln(os.Stderr, "datacom: log:", err)
+		}
+	}
 }
