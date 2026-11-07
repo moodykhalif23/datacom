@@ -80,8 +80,6 @@ func (m *Monitor) Fail(err error) {
 	m.mu.Unlock()
 }
 
-// Live prints a progress line to w every interval until stop is closed.
-// On a terminal the line is redrawn in place.
 func (m *Monitor) Live(w io.Writer, every time.Duration, terminal bool, stop <-chan struct{}) {
 	tick := time.NewTicker(every)
 	defer tick.Stop()
