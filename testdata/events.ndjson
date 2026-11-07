@@ -1,0 +1,3 @@
+{"id":1,"city":"Nairobi","temp":"27.5","ts":"2025-06-01T10:00:00Z"}
+{"id":2,"city":"Mombasa","temp":"31","ts":"2025-06-01T10:05:00Z"}
+{"id":3,"city":"Nairobi","temp":null,"ts":"2025-06-01T10:10:00Z"}

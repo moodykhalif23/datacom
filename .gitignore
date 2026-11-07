@@ -1,0 +1,4 @@
+/datacom
+*.gz
+!testdata/*.gz
+*.out
