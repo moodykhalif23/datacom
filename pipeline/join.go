@@ -41,6 +41,9 @@ func Join(left, right *Table, on string) (*Table, error) {
 			matches := lookup[strings.ToLower(l[li])]
 			if len(matches) == 0 {
 				matches = []Row{make(Row, width)}
+				if mon := left.monitor(); mon != nil {
+					mon.Unmatched.Add(1)
+				}
 			}
 			for _, m := range matches {
 				if !out.send(ch, append(append(make(Row, 0, len(hdr)), l...), m...)) {

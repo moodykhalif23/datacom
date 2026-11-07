@@ -36,6 +36,7 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 	}
 	uniqueHeaders(hdr)
 	schema := &Schema{Columns: hdr, Kinds: make([]Kind, len(hdr))}
+	tallies := make([]tally, len(hdr))
 	out, ch := in.child(hdr)
 
 	go func() {
@@ -52,42 +53,58 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 				buf = append(buf, r)
 				if o.Types {
 					for i := 0; i < len(hdr) && i < len(r); i++ {
-						schema.Kinds[i] = Widen(schema.Kinds[i], Infer(r[i]))
+						tallies[i].add(Infer(r[i]))
 					}
 				}
 				if wait == nil {
-					wait = time.After(500 * time.Millisecond)
+					wait = time.After(100 * time.Millisecond)
 				}
 			case <-wait:
 				break sample
 			}
 		}
-		for i, k := range schema.Kinds {
-			if k == KindEmpty {
-				schema.Kinds[i] = KindText
-			}
+		for i := range schema.Kinds {
+			schema.Kinds[i] = tallies[i].kind()
 		}
 		var seen map[uint64]struct{}
 		if o.Dedupe {
 			seen = map[uint64]struct{}{}
 		}
+		mon := in.monitor()
 		emit := func(r Row) bool {
+			if mon != nil && len(r) != len(hdr) {
+				if len(r) < len(hdr) {
+					mon.Padded.Add(1)
+				} else {
+					mon.Trimmed.Add(1)
+				}
+			}
 			r = fit(r, len(hdr))
 			empty := true
 			for i := range r {
+				k := KindText
 				if o.Types {
-					r[i] = Normalize(r[i], schema.Kinds[i])
-				} else {
-					r[i] = Normalize(r[i], KindText)
+					k = schema.Kinds[i]
+				}
+				raw := r[i]
+				r[i] = Normalize(raw, k)
+				if mon != nil && k != KindText && r[i] != "" && Infer(r[i]) != k && !(k == KindFloat && Infer(r[i]) == KindInt) {
+					mon.Bad(hdr[i], k, raw)
 				}
 				empty = empty && r[i] == ""
 			}
 			if empty && o.DropEmpty {
+				if mon != nil {
+					mon.Empty.Add(1)
+				}
 				return true
 			}
 			if seen != nil {
 				h := hashRow(r)
 				if _, dup := seen[h]; dup {
+					if mon != nil {
+						mon.Dupes.Add(1)
+					}
 					return true
 				}
 				seen[h] = struct{}{}

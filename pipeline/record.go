@@ -6,6 +6,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 )
@@ -24,6 +25,7 @@ type Table struct {
 	Header []string
 	Rows   <-chan Row
 	run    *run
+	root   bool
 }
 
 // run is the state shared by every stage of one pipeline.
@@ -32,13 +34,15 @@ type run struct {
 	cancel context.CancelFunc
 	mu     sync.Mutex
 	err    error
+	mon    *Monitor
 }
 
 const chanBuf = 512
 
 func newRoot(ctx context.Context, header []string) (*Table, chan Row) {
 	ctx, cancel := context.WithCancel(ctx)
-	t := &Table{Header: header, run: &run{ctx: ctx, cancel: cancel}}
+	mon, _ := ctx.Value(monKey{}).(*Monitor)
+	t := &Table{Header: header, run: &run{ctx: ctx, cancel: cancel, mon: mon}, root: true}
 	ch := make(chan Row, chanBuf)
 	t.Rows = ch
 	return t, ch
@@ -52,15 +56,32 @@ func (t *Table) child(header []string) (*Table, chan Row) {
 
 func (t *Table) send(ch chan<- Row, r Row) bool {
 	select {
+	case ch <- r: // rows already read keep flowing after a stop, so partial output is complete up to the error
+		if t.root && t.run.mon != nil {
+			t.run.mon.RowsIn.Add(1)
+		}
+		return true
+	default:
+	}
+	select {
 	case ch <- r:
+		if t.root && t.run.mon != nil {
+			t.run.mon.RowsIn.Add(1)
+		}
 		return true
 	case <-t.run.ctx.Done():
 		return false
 	}
 }
 
+// fail records the first error and stops every stage. A cancellation is a
+// clean stop, not an error.
 func (t *Table) fail(err error) {
 	if err == nil {
+		return
+	}
+	if errors.Is(err, context.Canceled) {
+		t.run.cancel()
 		return
 	}
 	t.run.mu.Lock()
@@ -144,3 +165,13 @@ func hashRow(r Row) uint64 {
 	}
 	return h
 }
+
+// WithMonitor returns a context whose pipelines report to m (nil detaches).
+func WithMonitor(ctx context.Context, m *Monitor) context.Context {
+	return context.WithValue(ctx, monKey{}, m)
+}
+
+type monKey struct{}
+
+// monitor returns the attached Monitor, or nil.
+func (t *Table) monitor() *Monitor { return t.run.mon }

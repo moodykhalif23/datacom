@@ -32,14 +32,20 @@ func Write(w io.Writer, t *Table, f Format) (int, error) {
 	default:
 		return 0, fmt.Errorf("unsupported output format %q", f)
 	}
+	if err == nil {
+		err = bw.Flush()
+	}
+	if err == nil {
+		err = t.Err()
+	}
+	if mon := t.monitor(); mon != nil {
+		mon.RowsOut.Store(int64(n))
+		mon.Fail(err)
+	}
 	if err != nil {
 		t.fail(err) // stop upstream goroutines
-		return n, err
 	}
-	if err := bw.Flush(); err != nil {
-		return n, err
-	}
-	return n, t.Err()
+	return n, err
 }
 
 func writeCSV(w io.Writer, t *Table, tsv bool) (int, error) {

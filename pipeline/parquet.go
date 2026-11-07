@@ -249,17 +249,21 @@ func writeParquet(w io.Writer, t *Table) (int, error) {
 	const sample = 1000
 	var head []Row
 	kinds := make([]Kind, len(t.Header))
+	tallies := make([]tally, len(t.Header))
 	timed := make([]bool, len(t.Header)) // dates that carry a time of day
 	for r := range t.Rows {
 		head = append(head, r)
 		for i := 0; i < len(kinds) && i < len(r); i++ {
 			k := Infer(r[i])
-			kinds[i] = Widen(kinds[i], k)
+			tallies[i].add(k)
 			timed[i] = timed[i] || k == KindDate && len(strings.TrimSpace(r[i])) > 10
 		}
 		if len(head) == sample {
 			break
 		}
+	}
+	for i := range kinds {
+		kinds[i] = tallies[i].kind()
 	}
 	group := orderedGroup{Group: parquet.Group{}, names: t.Header}
 	for i, h := range t.Header {

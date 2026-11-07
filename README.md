@@ -26,6 +26,7 @@ go build -ldflags="-s -w" -o datacom .     # smaller binary: symbols stripped
 datacom profile sales.csv.gz                 # what is in this file?
 datacom profile report.xlsx -sheet 2         # Excel, by sheet name or number
 datacom clean   raw.csv -snake -dedupe -o clean.csv
+datacom clean   raw.csv -monitor -log runs.jsonl -o clean.csv   # live progress + hiccup report
 datacom query   sales.csv -where "amount > 1000" -group region \
                 -agg "count,sum(amount),avg(amount):avg" -sort -sum_amount
 datacom query   sales.csv -join branches.csv -on branch_id \
@@ -50,6 +51,10 @@ Output is a table on a terminal and CSV when piped. Choose with `-f table|csv|ts
 ### Parquet
 
 Parquet files are read row group by row group and written as Snappy-compressed row groups of at most 262,144 rows, so memory stays bounded either way. Dates, timestamps (including legacy INT96), decimals and UUIDs come out as text you can read; nested fields get dotted names and repeated values become JSON arrays. Parquet and Excel need random access, so a pipe or URL is first spooled to a temporary file.
+
+### Monitor
+
+Add `-monitor` to any command for a live line on stderr (rows, MB read, throughput, memory) and, at the end, a plain report of every hiccup: values that could not be typed per column with examples, rows padded or trimmed, empty and duplicate rows dropped, join rows without a match, and stages that had to buffer. Each finding says what to do about it. Add `-log runs.jsonl` to append the same report as one JSON line per run, errors included, so problems across many files or a scheduled job can be reviewed later. `datacom version` prints the build for bug reports.
 
 ### Aggregates
 
