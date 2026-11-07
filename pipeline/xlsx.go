@@ -202,9 +202,10 @@ func (wb *workbook) stream(ctx context.Context, out chan<- Row) error {
 		case xml.StartElement:
 			switch el.Name.Local {
 			case "row":
-				row, inRow = row[:0], true
+				row, inRow, col = row[:0], true, -1
 			case "c":
 				typ, style = "", ""
+				col++ // cells without an r= reference are consecutive
 				for _, a := range el.Attr {
 					switch a.Name.Local {
 					case "r":
@@ -332,7 +333,10 @@ func xlsxCell(v string, forceText bool) string {
 		return "<c/>"
 	case forceText:
 	case v == "true" || v == "false":
-		return `<c t="b"><v>` + strconv.FormatBool(v == "true") + "</v></c>"
+		if v == "true" {
+			return `<c t="b"><v>1</v></c>`
+		}
+		return `<c t="b"><v>0</v></c>`
 	case len(v) <= 20 && jsonNumber.MatchString(v):
 		return "<c><v>" + v + "</v></c>"
 	case len(v) >= 10 && v[4] == '-' && v[7] == '-':

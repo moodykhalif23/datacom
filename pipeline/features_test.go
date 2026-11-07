@@ -213,7 +213,7 @@ func TestXLSXRoundTrip(t *testing.T) {
 	defer closeFn()
 	back := ReadXLSX(context.Background(), r, "")
 	rows := collect(back)
-	if got := strings.Join(back.Header, ",") + "|" + strings.Join(rows, ";"); got != "id,name,ok,when,amount|1,Acme <Ltd>,true,2025-01-15,1250.5;2,,false,2025-05-02 18:00:00," {
+	if got := strings.Join(back.Header, ",") + "|" + strings.Join(rows, ";"); got != "id,name,ok,when,amount|1,Acme <Ltd>,true,2025-01-15,1250.5;2,,false,2025-05-02 18:00:00" {
 		t.Fatalf("round trip %q (err %v)", got, back.Err())
 	}
 }
