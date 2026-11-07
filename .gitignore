@@ -4,3 +4,4 @@
 *.out
 .stress/
 /testdata/*.out
+dist/
