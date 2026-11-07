@@ -171,8 +171,6 @@ func looksLikeDate(s string) bool {
 	return digit && (sep || len(s) == 8)
 }
 
-// currencyCodes are stripped from the front or back of a number, so
-// "KES 3,400.00" and "3400 USD" both parse. Extend as needed.
 var currencyCodes = map[string]bool{
 	"kes": true, "ksh": true, "kshs": true, "sh": true, "shs": true, "tsh": true, "ush": true,
 	"ugx": true, "tzs": true, "rwf": true, "etb": true, "ngn": true, "zar": true, "ghs": true,

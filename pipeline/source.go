@@ -28,8 +28,6 @@ const (
 	FormatMarkdown Format = "md"
 )
 
-// Open returns a reader for path ("" or "-" means stdin), transparently
-// decompressing gzip, plus the format guessed from the name or content.
 func Open(path string, hint Format) (io.Reader, Format, func() error, error) {
 	var r io.Reader
 	closeFn := func() error { return nil }

@@ -4,10 +4,7 @@ package pipeline
 
 import "strings"
 
-// Row is one record. Values line up with Header by index.
 type Row []string
-
-// Table is a streaming source: a header plus a channel of rows.
 type Table struct {
 	Header []string
 	Rows   <-chan Row
@@ -25,7 +22,6 @@ func Index(header []string, name string) int {
 	return -1
 }
 
-// Get returns the value at column i, or "" when the row is short.
 func (r Row) Get(i int) string {
 	if i < 0 || i >= len(r) {
 		return ""
