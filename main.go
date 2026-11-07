@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"datacom/pipeline"
+	"github.com/moodykhalif23/datacom/pipeline"
 )
 
 const usage = `datacom — small, fast data cleaner for big files (CSV, TSV, JSON, NDJSON, gzip)
