@@ -109,37 +109,42 @@ func Infer(s string) Kind {
 
 // Normalize rewrites a raw value into its canonical form for kind.
 func Normalize(s string, k Kind) string {
+	v, _ := normalize(s, k)
+	return v
+}
+
+func normalize(s string, k Kind) (string, bool) {
 	if IsNull(s) {
-		return ""
+		return "", true
 	}
 	t := strings.TrimSpace(s)
 	switch k {
 	case KindInt, KindFloat:
 		if f, ok := ParseFloat(t); ok {
 			if k == KindInt && f == float64(int64(f)) {
-				return strconv.FormatInt(int64(f), 10)
+				return strconv.FormatInt(int64(f), 10), true
 			}
-			return strconv.FormatFloat(f, 'f', -1, 64)
+			return strconv.FormatFloat(f, 'f', -1, 64), true
 		}
 	case KindBool:
 		switch strings.ToLower(t) {
 		case "true", "yes", "y", "1":
-			return "true"
+			return "true", true
 		case "false", "no", "n", "0":
-			return "false"
+			return "false", true
 		}
 	case KindDate:
 		if d, ok := ParseDate(t); ok {
 			if d.Hour() == 0 && d.Minute() == 0 && d.Second() == 0 {
-				return d.Format("2006-01-02")
+				return d.Format("2006-01-02"), true
 			}
-			return d.Format(time.RFC3339)
+			return d.Format(time.RFC3339), true
 		}
 	}
 	if strings.ContainsAny(t, "\t\n\r") || strings.Contains(t, "  ") {
-		return strings.Join(strings.Fields(t), " ")
+		t = strings.Join(strings.Fields(t), " ")
 	}
-	return t
+	return t, k == KindText
 }
 
 // SnakeHeader turns "Total Amount (KES)" into "total_amount_kes".

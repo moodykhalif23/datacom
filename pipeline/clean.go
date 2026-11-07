@@ -87,8 +87,8 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 					k = schema.Kinds[i]
 				}
 				raw := r[i]
-				r[i] = Normalize(raw, k)
-				if mon != nil && k != KindText && r[i] != "" && Infer(r[i]) != k && !(k == KindFloat && Infer(r[i]) == KindInt) {
+				var ok bool
+				if r[i], ok = normalize(raw, k); !ok && mon != nil {
 					mon.Bad(hdr[i], k, raw)
 				}
 				empty = empty && r[i] == ""
