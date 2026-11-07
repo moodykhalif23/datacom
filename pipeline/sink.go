@@ -3,7 +3,6 @@ package pipeline
 import (
 	"bufio"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -11,34 +10,32 @@ import (
 	"unicode/utf8"
 )
 
-// Write streams t to w in format f and returns the number of rows written.
-// Table and Markdown buffer rows to size columns; the others stream.
+// Write streams t to w in format f and returns the number of rows written
+// and the first error from the writer or any upstream stage.
 func Write(w io.Writer, t *Table, f Format) (int, error) {
 	bw := bufio.NewWriterSize(w, 1<<20)
-	defer bw.Flush()
 	var n int
 	var err error
 	switch f {
 	case FormatCSV, FormatTSV, "":
 		n, err = writeCSV(bw, t, f == FormatTSV)
 	case FormatNDJSON:
-		n, err = writeNDJSON(bw, t)
+		n, err = writeJSON(bw, t, false)
 	case FormatJSON:
-		n, err = writeJSON(bw, t)
-	case FormatTable:
-		n, err = writeTable(bw, t, false)
-	case FormatMarkdown:
-		n, err = writeTable(bw, t, true)
+		n, err = writeJSON(bw, t, true)
+	case FormatTable, FormatMarkdown:
+		n, err = writeTable(bw, t, f == FormatMarkdown)
 	default:
 		return 0, fmt.Errorf("unsupported output format %q", f)
 	}
 	if err != nil {
+		t.fail(err) // stop upstream goroutines
 		return n, err
 	}
-	if t.Err != nil && *t.Err != nil {
-		return n, *t.Err
+	if err := bw.Flush(); err != nil {
+		return n, err
 	}
-	return n, nil
+	return n, t.Err()
 }
 
 func writeCSV(w io.Writer, t *Table, tsv bool) (int, error) {
@@ -60,63 +57,83 @@ func writeCSV(w io.Writer, t *Table, tsv bool) (int, error) {
 	return n, cw.Error()
 }
 
-func rowObject(t *Table, r Row) map[string]any {
-	m := make(map[string]any, len(t.Header))
-	for i, h := range t.Header {
-		m[h] = jsonValue(r.Get(i))
-	}
-	return m
-}
-
 var jsonNumber = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
 
-// jsonValue emits canonical numbers and booleans as JSON numbers and
-// booleans, empty strings as null, and everything else as a string.
-func jsonValue(v string) any {
-	switch {
-	case v == "":
-		return nil
-	case v == "true":
-		return true
-	case v == "false":
-		return false
-	case len(v) <= 20 && jsonNumber.MatchString(v):
-		return json.Number(v)
+func writeJSON(w *bufio.Writer, t *Table, array bool) (int, error) {
+	keys := make([][]byte, len(t.Header))
+	for i, h := range t.Header {
+		keys[i] = append(appendJSONString(nil, h), ':')
 	}
-	return v
-}
-
-func writeNDJSON(w io.Writer, t *Table) (int, error) {
-	enc := json.NewEncoder(w)
+	if array {
+		w.WriteString("[")
+	}
 	n := 0
+	buf := make([]byte, 0, 1024)
 	for r := range t.Rows {
-		if err := enc.Encode(rowObject(t, r)); err != nil {
+		buf = buf[:0]
+		if array {
+			if n > 0 {
+				buf = append(buf, ',')
+			}
+			buf = append(buf, "\n  "...)
+		}
+		buf = append(buf, '{')
+		for i, k := range keys {
+			if i > 0 {
+				buf = append(buf, ',')
+			}
+			buf = appendJSONValue(append(buf, k...), r.Get(i))
+		}
+		buf = append(buf, '}')
+		if !array {
+			buf = append(buf, '\n')
+		}
+		if _, err := w.Write(buf); err != nil {
 			return n, err
 		}
 		n++
+	}
+	if array {
+		w.WriteString("\n]\n")
 	}
 	return n, nil
 }
 
-func writeJSON(w io.Writer, t *Table) (int, error) {
-	if _, err := io.WriteString(w, "["); err != nil {
-		return 0, err
+// appendJSONValue writes canonical numbers and booleans as JSON numbers and
+// booleans, empty strings as null, and everything else as a string.
+func appendJSONValue(b []byte, v string) []byte {
+	switch {
+	case v == "":
+		return append(b, "null"...)
+	case v == "true" || v == "false":
+		return append(b, v...)
+	case len(v) <= 20 && jsonNumber.MatchString(v):
+		return append(b, v...)
 	}
-	n := 0
-	for r := range t.Rows {
-		b, err := json.Marshal(rowObject(t, r))
-		if err != nil {
-			return n, err
+	return appendJSONString(b, v)
+}
+
+const hexDigits = "0123456789abcdef"
+
+func appendJSONString(b []byte, s string) []byte {
+	b = append(b, '"')
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '"' || c == '\\':
+			b = append(b, '\\', c)
+		case c == '\n':
+			b = append(b, '\\', 'n')
+		case c == '\r':
+			b = append(b, '\\', 'r')
+		case c == '\t':
+			b = append(b, '\\', 't')
+		case c < 0x20:
+			b = append(b, '\\', 'u', '0', '0', hexDigits[c>>4], hexDigits[c&0xf])
+		default:
+			b = append(b, c)
 		}
-		if n > 0 {
-			io.WriteString(w, ",")
-		}
-		io.WriteString(w, "\n  ")
-		w.Write(b)
-		n++
 	}
-	_, err := io.WriteString(w, "\n]\n")
-	return n, err
+	return append(b, '"')
 }
 
 func writeTable(w io.Writer, t *Table, md bool) (int, error) {
@@ -131,57 +148,58 @@ func writeTable(w io.Writer, t *Table, md bool) (int, error) {
 	for r := range t.Rows {
 		for i := range t.Header {
 			v := r.Get(i)
-			if l := utf8.RuneCountInString(v); l > widths[i] {
-				widths[i] = min(l, maxWidth)
-			}
+			widths[i] = max(widths[i], min(utf8.RuneCountInString(v), maxWidth))
 			if v != "" && numeric[i] {
-				if _, ok := ParseFloat(v); !ok {
-					numeric[i] = false
-				}
+				_, numeric[i] = ParseFloat(v)
 			}
 		}
 		rows = append(rows, r)
 	}
-	cell := func(v string, i int) string {
-		if utf8.RuneCountInString(v) > maxWidth {
-			v = string([]rune(v)[:maxWidth-1]) + "…"
-		}
-		pad := widths[i] - utf8.RuneCountInString(v)
-		if numeric[i] {
-			return strings.Repeat(" ", pad) + v
-		}
-		return v + strings.Repeat(" ", pad)
-	}
 	line := func(r Row) string {
 		parts := make([]string, len(t.Header))
 		for i := range t.Header {
-			parts[i] = cell(r.Get(i), i)
+			v := trunc(r.Get(i), maxWidth)
+			pad := strings.Repeat(" ", widths[i]-utf8.RuneCountInString(v))
+			if numeric[i] {
+				parts[i] = pad + v
+			} else {
+				parts[i] = v + pad
+			}
 		}
 		if md {
 			return "| " + strings.Join(parts, " | ") + " |"
 		}
 		return strings.Join(parts, "  ")
 	}
-	fmt.Fprintln(w, line(Row(t.Header)))
-	if md {
-		seps := make([]string, len(widths))
-		for i, wd := range widths {
-			if numeric[i] {
-				seps[i] = strings.Repeat("-", wd) + ":"
-			} else {
-				seps[i] = strings.Repeat("-", wd+1)
-			}
-		}
-		fmt.Fprintln(w, "|"+strings.Join(seps, "|")+"|")
-	} else {
-		seps := make([]string, len(widths))
-		for i, wd := range widths {
+	seps := make([]string, len(widths))
+	for i, wd := range widths {
+		switch {
+		case md && numeric[i]:
+			seps[i] = strings.Repeat("-", wd) + ":"
+		case md:
+			seps[i] = strings.Repeat("-", wd+1)
+		default:
 			seps[i] = strings.Repeat("─", wd)
 		}
+	}
+	fmt.Fprintln(w, line(Row(t.Header)))
+	if md {
+		fmt.Fprintln(w, "|"+strings.Join(seps, "|")+"|")
+	} else {
 		fmt.Fprintln(w, strings.Join(seps, "  "))
 	}
 	for _, r := range rows {
-		fmt.Fprintln(w, line(r))
+		if _, err := fmt.Fprintln(w, line(r)); err != nil {
+			return 0, err
+		}
 	}
 	return len(rows), nil
+}
+
+// trunc shortens s to n runes with an ellipsis.
+func trunc(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n-1]) + "…"
 }

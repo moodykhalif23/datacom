@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,18 +29,41 @@ const (
 	FormatMarkdown Format = "md"
 )
 
-func Open(path string, hint Format) (io.Reader, Format, func() error, error) {
+// FormatFromName guesses a format from a file name or URL path.
+func FormatFromName(name string) (Format, bool) {
+	name = strings.ToLower(strings.TrimSuffix(name, ".gz"))
+	switch path.Ext(name) {
+	case ".csv":
+		return FormatCSV, true
+	case ".tsv", ".tab":
+		return FormatTSV, true
+	case ".json":
+		return FormatJSON, true
+	case ".ndjson", ".jsonl":
+		return FormatNDJSON, true
+	case ".md":
+		return FormatMarkdown, true
+	}
+	return "", false
+}
+
+// Open returns a buffered reader for a file path, an http(s) URL, or stdin
+// ("" or "-"), transparently decompressing gzip, plus the format guessed
+// from the name or content when hint is auto.
+func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func() error, error) {
 	var r io.Reader
 	closeFn := func() error { return nil }
-	if path == "" || path == "-" {
+	switch {
+	case src == "" || src == "-":
 		r = os.Stdin
-	} else {
-		f, err := os.Open(path)
+	case strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://"):
+		r = newRemote(ctx, src)
+	default:
+		f, err := os.Open(src)
 		if err != nil {
 			return nil, "", nil, err
 		}
-		r = f
-		closeFn = f.Close
+		r, closeFn = f, f.Close
 	}
 	br := bufio.NewReaderSize(r, 1<<20)
 	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
@@ -52,22 +76,14 @@ func Open(path string, hint Format) (io.Reader, Format, func() error, error) {
 	}
 	f := hint
 	if f == "" || f == FormatAuto {
-		f = guessFormat(path, br)
+		f = guessFormat(src, br)
 	}
 	return br, f, closeFn, nil
 }
 
-func guessFormat(path string, br *bufio.Reader) Format {
-	name := strings.ToLower(strings.TrimSuffix(path, ".gz"))
-	switch filepath.Ext(name) {
-	case ".csv":
-		return FormatCSV
-	case ".tsv", ".tab":
-		return FormatTSV
-	case ".json":
-		return FormatJSON
-	case ".ndjson", ".jsonl":
-		return FormatNDJSON
+func guessFormat(name string, br *bufio.Reader) Format {
+	if f, ok := FormatFromName(name); ok && f != FormatMarkdown {
+		return f
 	}
 	head, _ := br.Peek(4096)
 	t := bytes.TrimLeft(head, " \t\r\n\uFEFF")
@@ -85,29 +101,23 @@ func guessFormat(path string, br *bufio.Reader) Format {
 	return FormatCSV
 }
 
-// Read streams rows from r in the given format. Errors surface through
-// Table.Err after the channel closes.
-func Read(r io.Reader, f Format) *Table {
-	var err error
-	t := &Table{Err: &err}
+// Read streams rows from r. Cancelling ctx stops the pipeline; errors are
+// reported by Table.Err once the Rows channel closes.
+func Read(ctx context.Context, r io.Reader, f Format) *Table {
 	switch f {
 	case FormatCSV, FormatTSV:
-		return readCSV(r, f == FormatTSV, t)
-	case FormatNDJSON:
-		return readNDJSON(r, t)
-	case FormatJSON:
-		return readJSON(r, t)
+		return readCSV(ctx, r, f == FormatTSV)
+	case FormatNDJSON, FormatJSON:
+		return readJSON(ctx, r, f == FormatJSON)
 	}
-	err = fmt.Errorf("unsupported input format %q", f)
-	ch := make(chan Row)
+	t, ch := newRoot(ctx, nil)
+	t.fail(fmt.Errorf("unsupported input format %q", f))
 	close(ch)
-	t.Rows = ch
 	return t
 }
 
-func readCSV(r io.Reader, tsv bool, t *Table) *Table {
+func readCSV(ctx context.Context, r io.Reader, tsv bool) *Table {
 	cr := csv.NewReader(r)
-	cr.ReuseRecord = false
 	cr.FieldsPerRecord = -1
 	cr.LazyQuotes = true
 	cr.TrimLeadingSpace = true
@@ -115,114 +125,83 @@ func readCSV(r io.Reader, tsv bool, t *Table) *Table {
 		cr.Comma = '\t'
 	}
 	hdr, err := cr.Read()
-	if err != nil {
-		*t.Err = fmt.Errorf("read header: %w", err)
-		ch := make(chan Row)
-		close(ch)
-		t.Rows = ch
-		return t
-	}
 	if len(hdr) > 0 {
 		hdr[0] = strings.TrimPrefix(hdr[0], "\uFEFF")
 	}
-	t.Header = hdr
-	ch := make(chan Row, 1024)
-	t.Rows = ch
+	t, ch := newRoot(ctx, hdr)
+	if err != nil {
+		if err != io.EOF {
+			t.fail(fmt.Errorf("read header: %w", err))
+		}
+		close(ch)
+		return t
+	}
 	go func() {
 		defer close(ch)
 		for {
 			rec, err := cr.Read()
-			if err == io.EOF {
-				return
-			}
 			if err != nil {
-				*t.Err = err
-				return
-			}
-			ch <- Row(rec)
-		}
-	}()
-	return t
-}
-
-// readNDJSON infers the header from the first object and keeps key order
-// stable; keys that appear later are appended.
-func readNDJSON(r io.Reader, t *Table) *Table {
-	dec := json.NewDecoder(r)
-	ch := make(chan Row, 1024)
-	t.Rows = ch
-	first := map[string]any{}
-	if err := dec.Decode(&first); err != nil {
-		if err != io.EOF {
-			*t.Err = fmt.Errorf("read first object: %w", err)
-		}
-		close(ch)
-		return t
-	}
-	t.Header = sortedKeys(first)
-	go func() {
-		defer close(ch)
-		ch <- objToRow(first, t.Header)
-		for {
-			obj := map[string]any{}
-			if err := dec.Decode(&obj); err != nil {
 				if err != io.EOF {
-					*t.Err = err
+					t.fail(err)
 				}
 				return
 			}
-			ch <- objToRow(obj, t.Header)
+			if !t.send(ch, rec) {
+				return
+			}
 		}
 	}()
 	return t
 }
 
-// readJSON streams a top-level array of objects token by token.
-func readJSON(r io.Reader, t *Table) *Table {
+func readJSON(ctx context.Context, r io.Reader, array bool) *Table {
 	dec := json.NewDecoder(r)
-	ch := make(chan Row, 1024)
-	t.Rows = ch
-	tok, err := dec.Token()
-	if err != nil {
-		*t.Err = fmt.Errorf("read json: %w", err)
-		close(ch)
-		return t
-	}
-	if d, ok := tok.(json.Delim); !ok || d != '[' {
-		// Allow {"data":[...]} style wrappers: skip to the first array.
+	if array {
 		for {
-			if d, ok := tok.(json.Delim); ok && d == '[' {
-				break
-			}
-			tok, err = dec.Token()
+			tok, err := dec.Token()
 			if err != nil {
-				*t.Err = fmt.Errorf("json: no array of objects found")
+				t, ch := newRoot(ctx, nil)
+				if err != io.EOF {
+					t.fail(fmt.Errorf("json: no array found: %w", err))
+				}
 				close(ch)
 				return t
 			}
+			if d, ok := tok.(json.Delim); ok && d == '[' {
+				break
+			}
 		}
 	}
-	if !dec.More() {
-		close(ch)
-		return t
-	}
 	first := map[string]any{}
-	if err := dec.Decode(&first); err != nil {
-		*t.Err = err
+	err := io.EOF
+	if !array || dec.More() {
+		err = dec.Decode(&first)
+	}
+	t, ch := newRoot(ctx, sortedKeys(first))
+	if err != nil {
+		if err != io.EOF {
+			t.fail(fmt.Errorf("read first object: %w", err))
+		}
 		close(ch)
 		return t
 	}
-	t.Header = sortedKeys(first)
 	go func() {
 		defer close(ch)
-		ch <- objToRow(first, t.Header)
-		for dec.More() {
-			obj := map[string]any{}
-			if err := dec.Decode(&obj); err != nil {
-				*t.Err = err
+		obj := first
+		for {
+			if !t.send(ch, objToRow(obj, t.Header)) {
 				return
 			}
-			ch <- objToRow(obj, t.Header)
+			if array && !dec.More() {
+				return
+			}
+			obj = map[string]any{}
+			if err := dec.Decode(&obj); err != nil {
+				if err != io.EOF {
+					t.fail(err)
+				}
+				return
+			}
 		}
 	}()
 	return t
@@ -255,8 +234,7 @@ func scalar(v any) string {
 		return strconv.FormatFloat(x, 'f', -1, 64)
 	case bool:
 		return strconv.FormatBool(x)
-	default:
-		b, _ := json.Marshal(x)
-		return string(b)
 	}
+	b, _ := json.Marshal(v)
+	return string(b)
 }

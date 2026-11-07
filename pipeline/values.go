@@ -13,7 +13,11 @@ var nullWords = map[string]bool{
 
 // IsNull reports whether a raw value should be treated as missing.
 func IsNull(s string) bool {
-	return nullWords[strings.ToLower(strings.TrimSpace(s))]
+	s = strings.TrimSpace(s)
+	if len(s) > 9 { // longer than any null word
+		return false
+	}
+	return nullWords[strings.ToLower(s)]
 }
 
 var dateLayouts = []string{
@@ -56,7 +60,7 @@ func CleanNumber(s string) string {
 			r == '¥', r == '₹', r == '\'':
 			// drop
 		default:
-			return "" // letters mean this is not a number
+			return ""
 		}
 	}
 	out := b.String()
@@ -66,7 +70,6 @@ func CleanNumber(s string) string {
 	return out
 }
 
-// ParseFloat parses a human-formatted number ("1,234.50", "$12", "(3.0)").
 func ParseFloat(s string) (float64, bool) {
 	c := CleanNumber(s)
 	if c == "" {
@@ -139,7 +142,7 @@ func Normalize(s string, k Kind) string {
 	return t
 }
 
-// SnakeHeader turns "Total Amount (USD)" into "total_amount_usd".
+// SnakeHeader turns "Total Amount (KES)" into "total_amount_kes".
 func SnakeHeader(h string) string {
 	var b strings.Builder
 	prevUnderscore := true
@@ -156,8 +159,6 @@ func SnakeHeader(h string) string {
 	return strings.TrimRight(b.String(), "_")
 }
 
-// looksLikeDate is a cheap filter so ParseDate does not try every layout
-// on plain identifiers: a date needs a digit and a separator.
 func looksLikeDate(s string) bool {
 	digit, sep := false, false
 	for i := 0; i < len(s); i++ {

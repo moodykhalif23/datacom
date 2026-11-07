@@ -8,7 +8,6 @@ import (
 	"strings"
 )
 
-// AggSpec is one aggregate: Func over Col, output as Name.
 type AggSpec struct {
 	Func string // count, sum, avg, min, max, distinct, first, last
 	Col  int    // -1 for count(*)
@@ -19,42 +18,33 @@ type AggSpec struct {
 func ParseAggs(header []string, spec string) ([]AggSpec, error) {
 	var out []AggSpec
 	for _, part := range strings.Split(spec, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
+		expr, alias, _ := strings.Cut(strings.TrimSpace(part), ":")
+		if expr == "" {
 			continue
 		}
-		expr, alias, _ := strings.Cut(part, ":")
 		fn, col := expr, ""
 		if i := strings.IndexByte(expr, '('); i > 0 && strings.HasSuffix(expr, ")") {
-			fn, col = expr[:i], expr[i+1:len(expr)-1]
+			fn, col = expr[:i], strings.TrimSpace(expr[i+1:len(expr)-1])
 		}
 		fn = strings.ToLower(strings.TrimSpace(fn))
-		col = strings.TrimSpace(col)
-		a := AggSpec{Func: fn, Col: -1}
+		a := AggSpec{Func: fn, Col: -1, Name: strings.TrimSpace(alias)}
 		switch fn {
 		case "count":
-			if col != "" && col != "*" {
-				a.Col = Index(header, col)
-			}
 		case "sum", "avg", "min", "max", "distinct", "first", "last":
 			if col == "" {
 				return nil, fmt.Errorf("%s needs a column", fn)
 			}
-			a.Col = Index(header, col)
-			if a.Col < 0 {
-				return nil, fmt.Errorf("unknown column %q", col)
-			}
 		default:
 			return nil, fmt.Errorf("unknown aggregate %q", fn)
 		}
-		if a.Col == -1 && col != "" && col != "*" {
-			return nil, fmt.Errorf("unknown column %q", col)
+		if col != "" && col != "*" {
+			if a.Col = Index(header, col); a.Col < 0 {
+				return nil, fmt.Errorf("unknown column %q", col)
+			}
 		}
-		a.Name = strings.TrimSpace(alias)
 		if a.Name == "" {
-			if a.Col < 0 {
-				a.Name = "count"
-			} else {
+			a.Name = "count"
+			if a.Col >= 0 {
 				a.Name = fn + "_" + SnakeHeader(header[a.Col])
 			}
 		}
@@ -63,17 +53,15 @@ func ParseAggs(header []string, spec string) ([]AggSpec, error) {
 	return out, nil
 }
 
+// accum holds the running state of one aggregate in one group.
 type accum struct {
-	n        int64
-	sum      float64
-	min, max float64
-	minS     string
-	maxS     string
-	numeric  bool
-	seen     map[string]struct{}
-	first    string
-	last     string
-	started  bool
+	n           int64
+	sum         float64
+	minF, maxF  float64
+	minS, maxS  string
+	first, last string
+	numeric     bool
+	seen        map[string]struct{}
 }
 
 func (a *accum) add(v string, spec AggSpec) {
@@ -86,11 +74,11 @@ func (a *accum) add(v string, spec AggSpec) {
 	if v == "" {
 		return
 	}
+	if a.n == 0 {
+		a.first, a.numeric = v, true
+	}
 	a.n++
 	a.last = v
-	if !a.started {
-		a.first = v
-	}
 	switch spec.Func {
 	case "distinct":
 		if a.seen == nil {
@@ -99,28 +87,26 @@ func (a *accum) add(v string, spec AggSpec) {
 		a.seen[v] = struct{}{}
 	case "sum", "avg", "min", "max":
 		f, ok := ParseFloat(v)
-		if !a.started {
-			a.numeric = ok
-		}
-		if ok && a.numeric {
+		a.numeric = a.numeric && ok
+		if ok {
 			a.sum += f
-			if !a.started || f < a.min {
-				a.min = f
-			}
-			if !a.started || f > a.max {
-				a.max = f
-			}
-		} else {
-			a.numeric = false
-			if !a.started || v < a.minS {
-				a.minS = v
-			}
-			if !a.started || v > a.maxS {
-				a.maxS = v
-			}
+			a.minF, a.maxF = fold(a.n, a.minF, f, math.Min), fold(a.n, a.maxF, f, math.Max)
+		}
+		if a.n == 1 || v < a.minS {
+			a.minS = v
+		}
+		if a.n == 1 || v > a.maxS {
+			a.maxS = v
 		}
 	}
-	a.started = true
+}
+
+// fold combines the running value with v, or starts from v on the first one.
+func fold(n int64, cur, v float64, f func(a, b float64) float64) float64 {
+	if n == 1 {
+		return v
+	}
+	return f(cur, v)
 }
 
 func (a *accum) result(spec AggSpec) string {
@@ -142,18 +128,17 @@ func (a *accum) result(spec AggSpec) string {
 		return fmtNum(a.sum / float64(a.n))
 	case "min":
 		if a.numeric {
-			return fmtNum(a.min)
+			return fmtNum(a.minF)
 		}
 		return a.minS
-	case "max":
-		if a.numeric {
-			return fmtNum(a.max)
-		}
-		return a.maxS
 	}
-	return ""
+	if a.numeric { // max
+		return fmtNum(a.maxF)
+	}
+	return a.maxS
 }
 
+// fmtNum prints whole numbers without decimals and others with two.
 func fmtNum(f float64) string {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return ""
@@ -168,30 +153,25 @@ func fmtNum(f float64) string {
 // Memory grows with the number of distinct groups, not the number of rows.
 func Aggregate(in *Table, groupBy []string, aggs []AggSpec) (*Table, error) {
 	gidx := make([]int, len(groupBy))
+	hdr := make([]string, 0, len(groupBy)+len(aggs))
 	for i, g := range groupBy {
-		gidx[i] = Index(in.Header, g)
-		if gidx[i] < 0 {
+		if gidx[i] = Index(in.Header, g); gidx[i] < 0 {
 			return nil, fmt.Errorf("unknown group column %q", g)
 		}
-	}
-	hdr := make([]string, 0, len(groupBy)+len(aggs))
-	for _, i := range gidx {
-		hdr = append(hdr, in.Header[i])
+		hdr = append(hdr, in.Header[gidx[i]])
 	}
 	for _, a := range aggs {
 		hdr = append(hdr, a.Name)
 	}
-	out := &Table{Header: hdr, Err: in.Err}
-	ch := make(chan Row, 1024)
-	out.Rows = ch
+	out, ch := in.child(hdr)
 	go func() {
 		defer close(ch)
 		type group struct {
-			key  []string
+			key  Row
 			accs []accum
 		}
 		groups := map[string]*group{}
-		order := []string{}
+		var order []string
 		var kb strings.Builder
 		for r := range in.Rows {
 			kb.Reset()
@@ -202,7 +182,7 @@ func Aggregate(in *Table, groupBy []string, aggs []AggSpec) (*Table, error) {
 			k := kb.String()
 			g := groups[k]
 			if g == nil {
-				g = &group{key: make([]string, len(gidx)), accs: make([]accum, len(aggs))}
+				g = &group{key: make(Row, len(gidx)), accs: make([]accum, len(aggs))}
 				for j, i := range gidx {
 					g.key[j] = r.Get(i)
 				}
@@ -215,30 +195,28 @@ func Aggregate(in *Table, groupBy []string, aggs []AggSpec) (*Table, error) {
 		}
 		for _, k := range order {
 			g := groups[k]
-			row := make(Row, 0, len(hdr))
-			row = append(row, g.key...)
+			row := append(make(Row, 0, len(hdr)), g.key...)
 			for j, a := range aggs {
 				row = append(row, g.accs[j].result(a))
 			}
-			ch <- row
+			if !out.send(ch, row) {
+				return
+			}
 		}
 	}()
 	return out, nil
 }
 
-// Sort orders rows by key; a leading "-" means descending. Numeric values
-// sort numerically. This stage buffers every row, so apply it after
+// Sort orders rows by key; a leading "-" means descending. Numbers sort
+// numerically, nulls last. This stage buffers every row, so apply it after
 // filters or aggregates when the input is large.
 func Sort(in *Table, key string) (*Table, error) {
 	desc := strings.HasPrefix(key, "-")
-	key = strings.TrimPrefix(key, "-")
-	i := Index(in.Header, key)
+	i := Index(in.Header, strings.TrimPrefix(key, "-"))
 	if i < 0 {
 		return nil, fmt.Errorf("unknown sort column %q", key)
 	}
-	out := &Table{Header: in.Header, Err: in.Err}
-	ch := make(chan Row, 1024)
-	out.Rows = ch
+	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
 		var rows []Row
@@ -246,28 +224,46 @@ func Sort(in *Table, key string) (*Table, error) {
 			rows = append(rows, r)
 		}
 		sort.SliceStable(rows, func(a, b int) bool {
-			va, vb := rows[a].Get(i), rows[b].Get(i)
-			fa, oka := ParseFloat(va)
-			fb, okb := ParseFloat(vb)
-			var less bool
-			switch {
-			case va == "" && vb != "":
-				return false // nulls last regardless of direction
-			case vb == "" && va != "":
-				return true
-			case oka && okb:
-				less = fa < fb
-			default:
-				less = strings.ToLower(va) < strings.ToLower(vb)
-			}
+			c := compare(rows[a].Get(i), rows[b].Get(i))
 			if desc {
-				return !less && va != vb
+				return c > 0
 			}
-			return less
+			return c < 0
 		})
 		for _, r := range rows {
-			ch <- r
+			if !out.send(ch, r) {
+				return
+			}
 		}
 	}()
 	return out, nil
+}
+
+// compare orders two cell values: numbers numerically, text
+// case-insensitively, and empty values after everything else.
+func compare(a, b string) int {
+	switch {
+	case a == b:
+		return 0
+	case a == "":
+		return 1
+	case b == "":
+		return -1
+	}
+	if fa, ok := ParseFloat(a); ok {
+		if fb, ok := ParseFloat(b); ok {
+			return cmpFloat(fa, fb)
+		}
+	}
+	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+}
+
+func cmpFloat(a, b float64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
 }

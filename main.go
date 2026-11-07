@@ -1,12 +1,16 @@
 // datacom turns large, messy CSV/JSON files into clean, readable data.
-// It streams: files bigger than memory are fine.
+// It streams, so files bigger than memory are fine.
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"datacom/pipeline"
@@ -15,12 +19,12 @@ import (
 const usage = `datacom — small, fast data cleaner for big files (CSV, TSV, JSON, NDJSON, gzip)
 
 usage:
-  datacom profile [file]                     summarize a dataset
-  datacom clean   [file] [-o out] [flags]    normalize and dedupe
-  datacom query   [file] [flags]             select, filter, group, sort
-  datacom convert [file] -f json|csv|...     change format
+  datacom profile [source]                     summarize a dataset
+  datacom clean   [source] [-o out] [flags]    normalize and dedupe
+  datacom query   [source] [flags]             select, filter, group, sort
+  datacom convert [source] -f json|csv|...     change format
 
-input is stdin when no file is given. all commands accept:
+source is a file path, an http(s) URL, or stdin when omitted. All commands accept:
   -f  output format: table (default on a terminal), csv, tsv, json, ndjson, md
   -i  input format (default: auto-detect)
   -o  write to file instead of stdout
@@ -44,7 +48,7 @@ examples:
   datacom profile sales.csv.gz
   datacom clean raw.csv -snake -dedupe -o clean.csv
   datacom query sales.csv -where "amount > 1000" -group region -agg "count,sum(amount)" -sort -sum_amount
-  cat events.ndjson | datacom convert -f csv > events.csv
+  datacom convert https://example.org/export.json -f csv > export.csv
 `
 
 type opts struct {
@@ -89,45 +93,42 @@ func main() {
 	fs.IntVar(&o.top, "top", 5, "")
 	fs.BoolVar(&o.jsonReport, "json", false, "")
 
-	// Allow "datacom clean file.csv -flags" and "datacom clean -flags file.csv".
+	// Accept the source before or after the flags.
 	args := os.Args[2:]
-	var positional []string
 	for len(args) > 0 {
-		if !strings.HasPrefix(args[0], "-") {
-			positional = append(positional, args[0])
+		if !strings.HasPrefix(args[0], "-") || args[0] == "-" {
+			if o.in == "" {
+				o.in = args[0]
+			}
 			args = args[1:]
 			continue
 		}
-		if err := fs.Parse(args); err != nil {
-			os.Exit(2)
-		}
+		fs.Parse(args)
 		args = fs.Args()
 	}
-	if len(positional) > 0 {
-		o.in = positional[0]
-	}
-	if err := run(cmd, o); err != nil {
+
+	// Ctrl-C or a closed pipe stops every stage cleanly.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cmd, o); err != nil {
 		fmt.Fprintln(os.Stderr, "datacom:", err)
 		os.Exit(1)
 	}
 }
 
-func run(cmd string, o opts) error {
+func run(ctx context.Context, cmd string, o opts) error {
 	switch cmd {
 	case "profile", "clean", "query", "convert":
 	default:
 		return fmt.Errorf("unknown command %q (try: profile, clean, query, convert)", cmd)
 	}
 	start := time.Now()
-	r, inFmt, closeIn, err := pipeline.Open(o.in, pipeline.Format(o.inFormat))
+	r, inFmt, closeIn, err := pipeline.Open(ctx, o.in, pipeline.Format(o.inFormat))
 	if err != nil {
 		return err
 	}
 	defer closeIn()
-	t := pipeline.Read(r, inFmt)
-	if t.Err != nil && *t.Err != nil {
-		return *t.Err
-	}
+	t := pipeline.Read(ctx, r, inFmt)
 
 	out := os.Stdout
 	if o.out != "" {
@@ -140,24 +141,34 @@ func run(cmd string, o opts) error {
 	}
 	outFmt := pipeline.Format(o.format)
 	if outFmt == "" {
+		var ok bool
 		switch {
 		case o.out != "":
-			outFmt = guessFromName(o.out, inFmt)
+			outFmt, ok = pipeline.FormatFromName(o.out)
 		case isTerminal(os.Stdout) && cmd != "convert":
-			outFmt = pipeline.FormatTable
-		default:
+			outFmt, ok = pipeline.FormatTable, true
+		}
+		if !ok {
 			outFmt = inFmt
-			if outFmt == pipeline.FormatJSON {
-				outFmt = pipeline.FormatNDJSON
-			}
+		}
+		if outFmt == pipeline.FormatJSON {
+			outFmt = pipeline.FormatNDJSON
 		}
 	}
 
+	var schema *pipeline.Schema
+	if cmd != "convert" {
+		t, schema = pipeline.Clean(t, pipeline.CleanOptions{
+			SnakeHeaders: o.snake,
+			Dedupe:       o.dedupe,
+			DropEmpty:    !o.keepEmpty,
+			Types:        !o.noTypes || cmd == "profile",
+		})
+	}
 	if cmd == "profile" {
-		t, schema := pipeline.Clean(t, pipeline.CleanOptions{Types: true, DropEmpty: true})
 		rep := pipeline.Profile(t, schema.Kinds, o.top, 0)
-		if t.Err != nil && *t.Err != nil {
-			return *t.Err
+		if err := t.Err(); err != nil {
+			return err
 		}
 		if o.jsonReport {
 			return rep.WriteJSON(out)
@@ -165,59 +176,59 @@ func run(cmd string, o opts) error {
 		rep.WriteText(out)
 		return nil
 	}
-
 	if cmd != "convert" {
-		t, _ = pipeline.Clean(t, pipeline.CleanOptions{
-			SnakeHeaders: o.snake,
-			Dedupe:       o.dedupe,
-			DropEmpty:    !o.keepEmpty,
-			Types:        !o.noTypes,
-		})
-	}
-	if cmd == "query" || cmd == "clean" {
-		if len(o.where) > 0 {
-			conds := make([]*pipeline.Cond, 0, len(o.where))
-			for _, w := range o.where {
-				c, err := pipeline.ParseCond(t.Header, w)
-				if err != nil {
-					return err
-				}
-				conds = append(conds, c)
-			}
-			t = pipeline.Filter(t, conds)
+		if t, err = shape(t, o); err != nil {
+			return err
 		}
-		if o.selectCols != "" {
-			if t, err = pipeline.Select(t, splitList(o.selectCols)); err != nil {
-				return err
-			}
-		}
-		if o.group != "" || o.agg != "" {
-			if o.agg == "" {
-				o.agg = "count"
-			}
-			aggs, err := pipeline.ParseAggs(t.Header, o.agg)
-			if err != nil {
-				return err
-			}
-			if t, err = pipeline.Aggregate(t, splitList(o.group), aggs); err != nil {
-				return err
-			}
-		}
-		if o.sortKey != "" {
-			if t, err = pipeline.Sort(t, o.sortKey); err != nil {
-				return err
-			}
-		}
-		t = pipeline.Limit(t, o.limit)
 	}
 	n, err := pipeline.Write(out, t, outFmt)
 	if err != nil {
 		return err
 	}
+	if ctx.Err() != nil {
+		return errors.New("interrupted")
+	}
 	if !o.quiet {
 		fmt.Fprintf(os.Stderr, "%d rows in %s\n", n, time.Since(start).Round(time.Millisecond))
 	}
 	return nil
+}
+
+// shape applies the query stages in order: where, select, group, sort, limit.
+func shape(t *pipeline.Table, o opts) (*pipeline.Table, error) {
+	var err error
+	if len(o.where) > 0 {
+		conds := make([]*pipeline.Cond, len(o.where))
+		for i, w := range o.where {
+			if conds[i], err = pipeline.ParseCond(t.Header, w); err != nil {
+				return nil, err
+			}
+		}
+		t = pipeline.Filter(t, conds)
+	}
+	if o.selectCols != "" {
+		if t, err = pipeline.Select(t, splitList(o.selectCols)); err != nil {
+			return nil, err
+		}
+	}
+	if o.group != "" || o.agg != "" {
+		if o.agg == "" {
+			o.agg = "count"
+		}
+		aggs, err := pipeline.ParseAggs(t.Header, o.agg)
+		if err != nil {
+			return nil, err
+		}
+		if t, err = pipeline.Aggregate(t, splitList(o.group), aggs); err != nil {
+			return nil, err
+		}
+	}
+	if o.sortKey != "" {
+		if t, err = pipeline.Sort(t, o.sortKey); err != nil {
+			return nil, err
+		}
+	}
+	return pipeline.Limit(t, o.limit), nil
 }
 
 func splitList(s string) []string {
@@ -229,26 +240,6 @@ func splitList(s string) []string {
 		parts[i] = strings.TrimSpace(parts[i])
 	}
 	return parts
-}
-
-func guessFromName(name string, fallback pipeline.Format) pipeline.Format {
-	n := strings.ToLower(strings.TrimSuffix(name, ".gz"))
-	switch {
-	case strings.HasSuffix(n, ".csv"):
-		return pipeline.FormatCSV
-	case strings.HasSuffix(n, ".tsv"):
-		return pipeline.FormatTSV
-	case strings.HasSuffix(n, ".json"):
-		return pipeline.FormatJSON
-	case strings.HasSuffix(n, ".ndjson"), strings.HasSuffix(n, ".jsonl"):
-		return pipeline.FormatNDJSON
-	case strings.HasSuffix(n, ".md"):
-		return pipeline.FormatMarkdown
-	}
-	if fallback == pipeline.FormatJSON {
-		return pipeline.FormatNDJSON
-	}
-	return fallback
 }
 
 func isTerminal(f *os.File) bool {

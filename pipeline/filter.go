@@ -6,9 +6,6 @@ import (
 	"strings"
 )
 
-// Cond is one filter clause: column op value.
-// Supported ops: == != > >= < <= ~ (contains, case-insensitive) !~ =~ (regex)
-// and the unary "col is null" / "col not null".
 type Cond struct {
 	col   int
 	op    string
@@ -20,21 +17,15 @@ type Cond struct {
 
 var condRe = regexp.MustCompile(`^\s*([^\s=!<>~]+)\s*(==|!=|>=|<=|=~|!~|>|<|~|=)\s*(.*?)\s*$`)
 
-// ParseCond parses "amount > 100", "region == Nairobi", "name ~ ltd",
-// "email =~ ^.*@gov\.ke$", "phone is null", "phone not null".
 func ParseCond(header []string, expr string) (*Cond, error) {
 	e := strings.TrimSpace(expr)
 	lower := strings.ToLower(e)
-	for _, suf := range []string{" is null", " not null", " is not null"} {
+	for suf, op := range map[string]string{" is null": "isnull", " not null": "notnull", " is not null": "notnull"} {
 		if strings.HasSuffix(lower, suf) {
-			col := strings.TrimSpace(e[:len(e)-len(suf)])
+			col := e[:len(e)-len(suf)]
 			i := Index(header, col)
 			if i < 0 {
-				return nil, fmt.Errorf("unknown column %q", col)
-			}
-			op := "isnull"
-			if suf != " is null" {
-				op = "notnull"
+				return nil, fmt.Errorf("unknown column %q", strings.TrimSpace(col))
 			}
 			return &Cond{col: i, op: op}, nil
 		}
@@ -51,9 +42,7 @@ func ParseCond(header []string, expr string) (*Cond, error) {
 	if c.op == "=" {
 		c.op = "=="
 	}
-	if f, ok := ParseFloat(c.val); ok {
-		c.num, c.isNum = f, true
-	}
+	c.num, c.isNum = ParseFloat(c.val)
 	if c.op == "=~" || c.op == "!~" {
 		re, err := regexp.Compile("(?i)" + c.val)
 		if err != nil {
@@ -79,29 +68,21 @@ func (c *Cond) Match(r Row) bool {
 	case "!~":
 		return !c.re.MatchString(v)
 	}
+	var cmp int
 	if c.isNum {
-		if f, ok := ParseFloat(v); ok {
-			switch c.op {
-			case "==":
-				return f == c.num
-			case "!=":
-				return f != c.num
-			case ">":
-				return f > c.num
-			case ">=":
-				return f >= c.num
-			case "<":
-				return f < c.num
-			case "<=":
-				return f <= c.num
-			}
+		f, ok := ParseFloat(v)
+		if !ok {
+			return c.op == "!=" // non-numbers never equal a number
 		}
-		if c.op == "!=" {
-			return true
+		switch {
+		case f < c.num:
+			cmp = -1
+		case f > c.num:
+			cmp = 1
 		}
-		return false
+	} else {
+		cmp = strings.Compare(strings.ToLower(v), strings.ToLower(c.val))
 	}
-	cmp := strings.Compare(strings.ToLower(v), strings.ToLower(c.val))
 	switch c.op {
 	case "==":
 		return cmp == 0
@@ -113,10 +94,8 @@ func (c *Cond) Match(r Row) bool {
 		return cmp >= 0
 	case "<":
 		return cmp < 0
-	case "<=":
-		return cmp <= 0
 	}
-	return false
+	return cmp <= 0 // "<="
 }
 
 // Filter keeps rows matching every condition (AND).
@@ -124,29 +103,25 @@ func Filter(in *Table, conds []*Cond) *Table {
 	if len(conds) == 0 {
 		return in
 	}
-	out := &Table{Header: in.Header, Err: in.Err}
-	ch := make(chan Row, 1024)
-	out.Rows = ch
+	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
+	rows:
 		for r := range in.Rows {
-			ok := true
 			for _, c := range conds {
 				if !c.Match(r) {
-					ok = false
-					break
+					continue rows
 				}
 			}
-			if ok {
-				ch <- r
+			if !out.send(ch, r) {
+				return
 			}
 		}
 	}()
 	return out
 }
 
-// Select keeps only the named columns, in the given order. Names may be
-// renamed with "old:new".
+// Select keeps only the named columns, in order. "old:new" renames.
 func Select(in *Table, cols []string) (*Table, error) {
 	if len(cols) == 0 {
 		return in, nil
@@ -160,14 +135,12 @@ func Select(in *Table, cols []string) (*Table, error) {
 			return nil, fmt.Errorf("unknown column %q", name)
 		}
 		idx[i] = j
-		if alias == "" {
-			alias = in.Header[j]
+		hdr[i] = in.Header[j]
+		if alias = strings.TrimSpace(alias); alias != "" {
+			hdr[i] = alias
 		}
-		hdr[i] = strings.TrimSpace(alias)
 	}
-	out := &Table{Header: hdr, Err: in.Err}
-	ch := make(chan Row, 1024)
-	out.Rows = ch
+	out, ch := in.child(hdr)
 	go func() {
 		defer close(ch)
 		for r := range in.Rows {
@@ -175,28 +148,32 @@ func Select(in *Table, cols []string) (*Table, error) {
 			for i, j := range idx {
 				nr[i] = r.Get(j)
 			}
-			ch <- nr
+			if !out.send(ch, nr) {
+				return
+			}
 		}
 	}()
 	return out, nil
 }
 
-// Limit passes through at most n rows (n <= 0 means unlimited).
+// Limit passes through at most n rows (n <= 0 means unlimited) and then
+// stops the upstream stages instead of draining them.
 func Limit(in *Table, n int) *Table {
 	if n <= 0 {
 		return in
 	}
-	out := &Table{Header: in.Header, Err: in.Err}
-	ch := make(chan Row, 1024)
-	out.Rows = ch
+	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
 		i := 0
 		for r := range in.Rows {
-			if i < n {
-				ch <- r
+			if !out.send(ch, r) {
+				return
 			}
-			i++ // keep draining so upstream goroutines finish
+			if i++; i == n {
+				in.run.cancel()
+				return
+			}
 		}
 	}()
 	return out

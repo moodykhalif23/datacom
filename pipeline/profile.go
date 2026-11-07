@@ -22,9 +22,8 @@ type ColumnStats struct {
 	Mean     *float64     `json:"mean,omitempty"`
 	StdDev   *float64     `json:"stddev,omitempty"`
 	Top      []ValueCount `json:"top,omitempty"`
-	Examples []string     `json:"examples,omitempty"`
 	kind     Kind
-	sum, sq  float64
+	mean, m2 float64 // Welford running mean and squared distance
 	minF     float64
 	maxF     float64
 	minS     string
@@ -49,9 +48,6 @@ type Report struct {
 	Issues    []string      `json:"issues"`
 }
 
-// Profile consumes the whole table and returns summary statistics.
-// Distinct values are tracked exactly up to distinctCap per column, after
-// which a hash sketch keeps the estimate cheap.
 func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	if topN <= 0 {
 		topN = 5
@@ -63,13 +59,19 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	cols := make([]ColumnStats, len(t.Header))
 	for i, h := range t.Header {
 		cols[i] = ColumnStats{Name: h, seen: map[string]int64{}}
-		if i < len(kinds) && kinds[i] != KindEmpty {
-			cols[i].kind, cols[i].fixed = kinds[i], true
-		}
 	}
 	rowHashes := map[uint64]struct{}{}
 	for r := range t.Rows {
 		rep.Rows++
+		if rep.Rows == 1 {
+			// Clean fills kinds before it emits its first row, so reading
+			// them after the first receive is race-free.
+			for i := range cols {
+				if i < len(kinds) && kinds[i] != KindEmpty {
+					cols[i].kind, cols[i].fixed = kinds[i], true
+				}
+			}
+		}
 		if rep.Rows <= int64(distinctCap)*10 {
 			h := hashRow(r)
 			if _, dup := rowHashes[h]; dup {
@@ -91,9 +93,10 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 				k = Infer(v)
 				c.kind = Widen(c.kind, k)
 			}
-			if f, ok := ParseFloat(v); ok && (k == KindInt || k == KindFloat) {
-				c.sum += f
-				c.sq += f * f
+			if f, ok := numeric(v, k); ok {
+				delta := f - c.mean
+				c.mean += delta / float64(c.Count)
+				c.m2 += delta * (f - c.mean)
 				if c.Count == 1 || f < c.minF {
 					c.minF = f
 				}
@@ -113,22 +116,11 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 					c.capped = true
 					c.sketch = newHLL()
 					for s := range c.seen {
-						c.sketch.add(hashStr(s))
+						c.sketch.add(hash64(hashSeed, s))
 					}
 				}
 			} else {
-				c.sketch.add(hashStr(v))
-			}
-			if len(c.Examples) < 3 {
-				dup := false
-				for _, e := range c.Examples {
-					if e == v {
-						dup = true
-					}
-				}
-				if !dup {
-					c.Examples = append(c.Examples, v)
-				}
+				c.sketch.add(hash64(hashSeed, v))
 			}
 		}
 	}
@@ -150,9 +142,7 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 		case KindInt, KindFloat:
 			c.Min, c.Max = fmtNum(c.minF), fmtNum(c.maxF)
 			if c.Count > 0 {
-				mean := c.sum / float64(c.Count)
-				sd := math.Sqrt(math.Max(0, c.sq/float64(c.Count)-mean*mean))
-				mean, sd = round(mean, 2), round(sd, 2)
+				mean, sd := round(c.mean, 2), round(math.Sqrt(c.m2/float64(c.Count)), 2)
 				c.Mean, c.StdDev = &mean, &sd
 			}
 		default:
@@ -181,7 +171,7 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 		if c.Distinct == 1 && c.Count > 1 {
 			rep.Issues = append(rep.Issues, fmt.Sprintf("%s: constant value %q", c.Name, c.Min))
 		}
-		if c.Count > 0 && c.Distinct == c.Count && c.kind == KindText && rep.Rows > 1 {
+		if rep.Rows >= 100 && c.Distinct == c.Count && c.kind == KindText {
 			rep.Issues = append(rep.Issues, fmt.Sprintf("%s: unique per row (identifier?)", c.Name))
 		}
 		if c.kind == KindText && len(c.Top) > 1 {
@@ -201,16 +191,6 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	}
 	rep.Columns = cols
 	return rep
-}
-
-func hashStr(s string) uint64 {
-	const prime = 1099511628211
-	var h uint64 = 14695981039346656037
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= prime
-	}
-	return h
 }
 
 func round(f float64, places int) float64 {
@@ -253,10 +233,11 @@ func (r *Report) WriteText(w io.Writer) {
 	}
 }
 
-func trunc(s string, n int) string {
-	rs := []rune(s)
-	if len(rs) <= n {
-		return s
+// numeric parses v only when the column is numeric; text columns skip the
+// work entirely.
+func numeric(v string, k Kind) (float64, bool) {
+	if k != KindInt && k != KindFloat {
+		return 0, false
 	}
-	return string(rs[:n-1]) + "…"
+	return ParseFloat(v)
 }

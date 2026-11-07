@@ -2,3 +2,4 @@
 *.gz
 !testdata/*.gz
 *.out
+.stress/

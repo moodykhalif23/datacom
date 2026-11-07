@@ -1,28 +1,23 @@
 package pipeline
 
 import (
-	"hash/fnv"
+	"strconv"
 	"strings"
 )
 
-// CleanOptions controls the Clean stage.
 type CleanOptions struct {
-	SnakeHeaders bool // rename "Total Amount" -> total_amount
-	Dedupe       bool // drop rows identical to one already seen
-	DropEmpty    bool // drop rows where every value is null
-	Sample       int  // rows used to infer column kinds (default 1000)
-	Types        bool // normalize numbers, dates, bools
+	SnakeHeaders bool
+	Dedupe       bool
+	DropEmpty    bool
+	Types        bool
+	Sample       int // rows used to infer column kinds (default 1000)
 }
 
-// Schema is what Clean learned about the columns.
 type Schema struct {
 	Columns []string
 	Kinds   []Kind
 }
 
-// Clean normalizes headers and values, drops empty and duplicate rows,
-// and returns the cleaned stream with its inferred schema. Kinds are
-// inferred from the first Sample rows, which are buffered then replayed.
 func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 	if o.Sample <= 0 {
 		o.Sample = 1000
@@ -31,18 +26,16 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 	for i, h := range in.Header {
 		h = strings.TrimSpace(h)
 		if h == "" {
-			h = "col_" + itoa(i+1)
+			h = "col_" + strconv.Itoa(i+1)
 		}
 		if o.SnakeHeaders {
 			h = SnakeHeader(h)
 		}
 		hdr[i] = h
 	}
-	hdr = uniqueHeaders(hdr)
+	uniqueHeaders(hdr)
 	schema := &Schema{Columns: hdr, Kinds: make([]Kind, len(hdr))}
-	out := &Table{Header: hdr, Err: in.Err}
-	ch := make(chan Row, 1024)
-	out.Rows = ch
+	out, ch := in.child(hdr)
 
 	go func() {
 		defer close(ch)
@@ -54,100 +47,73 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 					schema.Kinds[i] = Widen(schema.Kinds[i], Infer(r[i]))
 				}
 			}
-			if len(buf) >= o.Sample {
+			if len(buf) == o.Sample {
 				break
 			}
 		}
-		if o.Types {
-			for i, k := range schema.Kinds {
-				if k == KindEmpty {
-					schema.Kinds[i] = KindText
-				}
+		for i, k := range schema.Kinds {
+			if k == KindEmpty {
+				schema.Kinds[i] = KindText
 			}
 		}
-		seen := map[uint64]struct{}{}
-		emit := func(r Row) {
-			if len(r) < len(hdr) {
-				padded := make(Row, len(hdr))
-				copy(padded, r)
-				r = padded
-			} else if len(r) > len(hdr) {
-				r = r[:len(hdr)]
-			}
+		var seen map[uint64]struct{}
+		if o.Dedupe {
+			seen = map[uint64]struct{}{}
+		}
+		emit := func(r Row) bool {
+			r = fit(r, len(hdr))
 			empty := true
 			for i := range r {
 				if o.Types {
 					r[i] = Normalize(r[i], schema.Kinds[i])
-				} else if IsNull(r[i]) {
-					r[i] = ""
 				} else {
-					r[i] = strings.TrimSpace(r[i])
+					r[i] = Normalize(r[i], KindText)
 				}
-				if r[i] != "" {
-					empty = false
-				}
+				empty = empty && r[i] == ""
 			}
 			if empty && o.DropEmpty {
-				return
+				return true
 			}
-			if o.Dedupe {
+			if seen != nil {
 				h := hashRow(r)
 				if _, dup := seen[h]; dup {
-					return
+					return true
 				}
 				seen[h] = struct{}{}
 			}
-			ch <- r
+			return out.send(ch, r)
 		}
 		for _, r := range buf {
-			emit(r)
+			if !emit(r) {
+				return
+			}
 		}
 		for r := range in.Rows {
-			emit(r)
+			if !emit(r) {
+				return
+			}
 		}
 	}()
 	return out, schema
 }
 
-func hashRow(r Row) uint64 {
-	h := fnv.New64a()
-	for _, v := range r {
-		h.Write([]byte(v))
-		h.Write([]byte{0})
+// fit pads or trims r to n columns.
+func fit(r Row, n int) Row {
+	if len(r) == n {
+		return r
 	}
-	return h.Sum64()
+	if len(r) > n {
+		return r[:n]
+	}
+	return append(r, make(Row, n-len(r))...)
 }
 
-func uniqueHeaders(h []string) []string {
-	seen := map[string]int{}
+func uniqueHeaders(h []string) {
+	seen := make(map[string]int, len(h))
 	for i, name := range h {
-		n := seen[name]
-		seen[name] = n + 1
-		if n > 0 {
-			h[i] = name + "_" + itoa(n+1)
+		if n := seen[name]; n > 0 {
+			h[i] = name + "_" + strconv.Itoa(n+1)
 		}
+		seen[name]++
 	}
-	return h
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var b [20]byte
-	p := len(b)
-	neg := i < 0
-	if neg {
-		i = -i
-	}
-	for i > 0 {
-		p--
-		b[p] = byte('0' + i%10)
-		i /= 10
-	}
-	if neg {
-		p--
-		b[p] = '-'
-	}
-	return string(b[p:])
 }
