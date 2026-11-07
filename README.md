@@ -36,15 +36,6 @@ Output is a table on a terminal and CSV when piped. Choose with `-f table|csv|ts
 
 `-where` is repeatable and the clauses are ANDed.
 
-| Expression                             | Meaning                                  |
-| -------------------------------------- | ---------------------------------------- |
-| `amount > 1000`                      | numeric compare: `== != > >= < <=`     |
-| `region == Nairobi`                  | text compare, case-insensitive           |
-| `name ~ ltd`                         | contains                                 |
-| `email =~ @.*\.go\.ke$`              | regex (`!~` negates)                   |
-| `date >= 2025-01-01`                 | ISO dates compare as text after cleaning |
-| `phone not null` / `phone is null` | missing-value checks                     |
-
 ### Aggregates
 
 `-agg "count, sum(x), avg(x), min(x), max(x), distinct(x), first(x), last(x)"`. Add `:alias` to name a column.
@@ -92,17 +83,17 @@ tools/stress.sh            # ~1.3 GB of data in ./.stress, results on stdout
 
 Results on 10 million rows (1.2 GB, 11 columns, one core, `GOMEMLIMIT=64MiB`):
 
-| command | time | peak memory |
-| --- | --- | --- |
-| `convert` CSV to NDJSON or JSON | 17 s | 17 MB |
-| `clean -snake` to CSV | 19 s | 17 MB |
-| `query` two filters, group-by, sum/avg, sort | 23 s | 17 MB |
-| `query -limit 10` (stops upstream early) | 0.1 s | 5 MB |
-| `profile` (plain or gzip input) | 48 s | 81 MB |
-| `clean -dedupe` (one hash per distinct row) | 109 s | 303 MB |
-| throttled stdin pipe at 40 MB/s | 53 s | 3 MB |
-| Ctrl-C | exits 1 within a second | |
-| `\| head -2` | stops in 0.01 s | |
+| command                                        | time                    | peak memory |
+| ---------------------------------------------- | ----------------------- | ----------- |
+| `convert` CSV to NDJSON or JSON              | 17 s                    | 17 MB       |
+| `clean -snake` to CSV                        | 19 s                    | 17 MB       |
+| `query` two filters, group-by, sum/avg, sort | 23 s                    | 17 MB       |
+| `query -limit 10` (stops upstream early)     | 0.1 s                   | 5 MB        |
+| `profile` (plain or gzip input)              | 48 s                    | 81 MB       |
+| `clean -dedupe` (one hash per distinct row)  | 109 s                   | 303 MB      |
+| throttled stdin pipe at 40 MB/s                | 53 s                    | 3 MB        |
+| Ctrl-C                                         | exits 1 within a second |             |
+| `\| head -2`                                  | stops in 0.01 s         |             |
 
 Row counts match between `query -agg count` and `convert` output. Fuzz targets cover the CSV reader, JSON reader and value parsers; `go test -race` passes, including a goroutine-leak test and a network test that drops, stalls and 503s a download mid-stream.
 
@@ -118,4 +109,3 @@ Only three things grow with the data: `-dedupe` keeps one 8-byte hash per distin
 ## License
 
 MIT
-
