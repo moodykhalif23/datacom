@@ -132,15 +132,13 @@ func main() {
 		args = fs.Args()
 	}
 
-	// Ctrl-C or a closed pipe stops every stage cleanly. Ignoring SIGPIPE
-	// turns a reader that stops early (| head) into a write error, so the
-	// -monitor / -log report is still written instead of the process dying.
+	// Ctrl-C or a closed pipe stops every stage cleanly.
 	signal.Ignore(syscall.SIGPIPE)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, cmd, o); err != nil {
 		if errors.Is(err, syscall.EPIPE) {
-			return // the reader has gone; nothing is listening for a message
+			return // the reader has gone away
 		}
 		fmt.Fprintln(os.Stderr, "datacom:", err)
 		os.Exit(1)
@@ -267,7 +265,8 @@ func shape(ctx context.Context, t *pipeline.Table, o opts) (*pipeline.Table, fun
 	t, _ = pipeline.Clean(t, clean)
 	done := func() error { return nil }
 	if o.join != "" {
-		right, closeRight, err := open(pipeline.WithMonitor(ctx, nil), o, nil, o.join, false) // lookup rows are not "rows in"
+		// The lookup side is not metered: its rows are not "rows in".
+		right, closeRight, err := open(pipeline.WithMonitor(ctx, nil), o, nil, o.join, false)
 		if err != nil {
 			return nil, nil, err
 		}

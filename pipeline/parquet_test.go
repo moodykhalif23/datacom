@@ -67,11 +67,6 @@ func TestParquetCorpus(t *testing.T) {
 			if err := tb.Err(); err != nil {
 				t.Fatalf("%s: %v", name, err)
 			}
-			for _, row := range rows {
-				if strings.Count(row, ",") != len(tb.Header)-1 && len(tb.Header) > 0 {
-					break // commas inside values are fine; just a smoke check
-				}
-			}
 			t.Logf("%s: %d columns, %d rows", name, len(tb.Header), len(rows))
 		})
 	}

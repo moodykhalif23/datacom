@@ -172,8 +172,7 @@ func (m *Monitor) Report() RunReport {
 	return r
 }
 
-// WriteText prints the report for people, with what to do about each
-// finding.
+// WriteText prints a human-readable report with a suggested fix for each finding.
 func (r RunReport) WriteText(w io.Writer) {
 	fmt.Fprintf(w, "monitor: %s rows in, %s out, %.0f MB read in %.1fs (%s rows/s), peak memory %d MB\n",
 		commas(r.RowsIn), commas(r.RowsOut), float64(r.Bytes)/1e6, r.Seconds,

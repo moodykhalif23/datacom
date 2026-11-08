@@ -62,7 +62,7 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 		cols[i] = ColumnStats{Name: h, seen: map[string]int64{}}
 	}
 	rowHashes := map[uint64]struct{}{}
-	dupCap := int64(distinctCap) * 10 // exact duplicate scan is bounded; the report says so
+	dupCap := int64(distinctCap) * 10 // bounds the exact duplicate scan
 	for r := range t.Rows {
 		rep.Rows++
 		if rep.Rows == 1 {
@@ -261,8 +261,7 @@ func (r *Report) WriteText(w io.Writer) {
 	}
 }
 
-// numeric parses v only when the column is numeric; text columns skip the
-// work entirely.
+// numeric parses v only for numeric columns.
 func numeric(v string, k Kind) (float64, bool) {
 	if k != KindInt && k != KindFloat {
 		return 0, false

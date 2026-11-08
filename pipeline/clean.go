@@ -42,7 +42,8 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 	go func() {
 		defer close(ch)
 		buf := make([]Row, 0, o.Sample)
-		var wait <-chan time.Time // live inputs must not stall waiting for a full sample
+		// A live input must not stall waiting for a full sample.
+		var wait <-chan time.Time
 	sample:
 		for len(buf) < o.Sample {
 			select {

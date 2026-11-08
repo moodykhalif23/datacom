@@ -131,11 +131,13 @@ func (a *accum) result(spec AggSpec) string {
 			return fmtNum(a.minF)
 		}
 		return a.minS
+	case "max":
+		if a.numeric {
+			return fmtNum(a.maxF)
+		}
+		return a.maxS
 	}
-	if a.numeric { // max
-		return fmtNum(a.maxF)
-	}
-	return a.maxS
+	return ""
 }
 
 // fmtNum prints whole numbers without decimals and others with two.
