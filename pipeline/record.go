@@ -7,6 +7,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"iter"
 	"strings"
 	"sync"
 )
@@ -23,9 +24,10 @@ func (r Row) Get(i int) string {
 
 type Table struct {
 	Header []string
-	Rows   <-chan Row
+	Rows   <-chan []Row // batches of rows; Each walks them one row at a time
 	run    *run
 	root   bool
+	live   bool // a followed file: hand every row on at once instead of filling a batch
 }
 
 // run is the state shared by every stage of one pipeline.
@@ -37,43 +39,98 @@ type run struct {
 	mon    *Monitor
 }
 
-const chanBuf = 512
+// Stages hand rows on in batches so the channel is locked once per batch
+// rather than once per row. chanBuf batches may be in flight between two
+// stages, so about chanBuf*batchSize rows per stage boundary.
+const (
+	chanBuf   = 4
+	batchSize = 256
+)
 
-func newRoot(ctx context.Context, header []string) (*Table, chan Row) {
+type liveKey struct{}
+
+// WithLive marks a context whose source never ends, such as a followed
+// file, so every row is passed downstream as soon as it is read.
+func WithLive(ctx context.Context) context.Context {
+	return context.WithValue(ctx, liveKey{}, true)
+}
+
+func newRoot(ctx context.Context, header []string) (*Table, *emitter) {
 	ctx, cancel := context.WithCancel(ctx)
 	mon, _ := ctx.Value(monKey{}).(*Monitor)
-	t := &Table{Header: header, run: &run{ctx: ctx, cancel: cancel, mon: mon}, root: true}
-	ch := make(chan Row, chanBuf)
-	t.Rows = ch
-	return t, ch
+	live, _ := ctx.Value(liveKey{}).(bool)
+	t := &Table{Header: header, run: &run{ctx: ctx, cancel: cancel, mon: mon}, root: true, live: live}
+	return t, t.emitter()
 }
 
 // child creates the next stage, sharing this pipeline's context and error.
-func (t *Table) child(header []string) (*Table, chan Row) {
-	ch := make(chan Row, chanBuf)
-	return &Table{Header: header, Rows: ch, run: t.run}, ch
+func (t *Table) child(header []string) (*Table, *emitter) {
+	c := &Table{Header: header, run: t.run, live: t.live}
+	return c, c.emitter()
 }
 
-func (t *Table) send(ch chan<- Row, r Row) bool {
+func (t *Table) emitter() *emitter {
+	ch := make(chan []Row, chanBuf)
+	t.Rows = ch
+	return &emitter{t: t, ch: ch}
+}
+
+// Each yields the table's rows in order. Stages and callers read a table
+// through it; the batches behind it are an implementation detail.
+func (t *Table) Each() iter.Seq[Row] {
+	return func(yield func(Row) bool) {
+		for batch := range t.Rows {
+			for _, r := range batch {
+				if !yield(r) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// emitter collects the rows a stage produces and sends them on a batch at
+// a time. close flushes what is left and closes the channel.
+type emitter struct {
+	t   *Table
+	ch  chan []Row
+	buf []Row
+}
+
+func (e *emitter) send(r Row) bool {
+	e.buf = append(e.buf, r)
+	if len(e.buf) < batchSize && !e.t.live {
+		return true
+	}
+	return e.flush()
+}
+
+func (e *emitter) flush() bool {
+	if len(e.buf) == 0 {
+		return true
+	}
+	b := e.buf
+	e.buf = nil
 	// Try without watching ctx first, so rows already read keep flowing
 	// after a stop and partial output is complete up to the error.
 	select {
-	case ch <- r:
-		if t.root && t.run.mon != nil {
-			t.run.mon.RowsIn.Add(1)
-		}
-		return true
+	case e.ch <- b:
 	default:
-	}
-	select {
-	case ch <- r:
-		if t.root && t.run.mon != nil {
-			t.run.mon.RowsIn.Add(1)
+		select {
+		case e.ch <- b:
+		case <-e.t.run.ctx.Done():
+			return false
 		}
-		return true
-	case <-t.run.ctx.Done():
-		return false
 	}
+	if e.t.root && e.t.run.mon != nil {
+		e.t.run.mon.RowsIn.Add(int64(len(b)))
+	}
+	return true
+}
+
+func (e *emitter) close() {
+	e.flush()
+	close(e.ch)
 }
 
 // fail records the first error and stops every stage. A cancellation is a

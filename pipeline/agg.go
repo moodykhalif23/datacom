@@ -165,9 +165,9 @@ func Aggregate(in *Table, groupBy []string, aggs []AggSpec) (*Table, error) {
 	for _, a := range aggs {
 		hdr = append(hdr, a.Name)
 	}
-	out, ch := in.child(hdr)
+	out, em := in.child(hdr)
 	go func() {
-		defer close(ch)
+		defer em.close()
 		type group struct {
 			key  Row
 			accs []accum
@@ -175,24 +175,26 @@ func Aggregate(in *Table, groupBy []string, aggs []AggSpec) (*Table, error) {
 		groups := map[string]*group{}
 		var order []string
 		var kb strings.Builder
-		for r := range in.Rows {
-			kb.Reset()
-			for _, i := range gidx {
-				kb.WriteString(r.Get(i))
-				kb.WriteByte(0)
-			}
-			k := kb.String()
-			g := groups[k]
-			if g == nil {
-				g = &group{key: make(Row, len(gidx)), accs: make([]accum, len(aggs))}
-				for j, i := range gidx {
-					g.key[j] = r.Get(i)
+		for batch := range in.Rows {
+			for _, r := range batch {
+				kb.Reset()
+				for _, i := range gidx {
+					kb.WriteString(r.Get(i))
+					kb.WriteByte(0)
 				}
-				groups[k] = g
-				order = append(order, k)
-			}
-			for j, a := range aggs {
-				g.accs[j].add(r.Get(a.Col), a)
+				k := kb.String()
+				g := groups[k]
+				if g == nil {
+					g = &group{key: make(Row, len(gidx)), accs: make([]accum, len(aggs))}
+					for j, i := range gidx {
+						g.key[j] = r.Get(i)
+					}
+					groups[k] = g
+					order = append(order, k)
+				}
+				for j, a := range aggs {
+					g.accs[j].add(r.Get(a.Col), a)
+				}
 			}
 		}
 		if mon := in.monitor(); mon != nil && len(groups) > 100_000 {
@@ -204,7 +206,7 @@ func Aggregate(in *Table, groupBy []string, aggs []AggSpec) (*Table, error) {
 			for j, a := range aggs {
 				row = append(row, g.accs[j].result(a))
 			}
-			if !out.send(ch, row) {
+			if !em.send(row) {
 				return
 			}
 		}
@@ -221,12 +223,14 @@ func Sort(in *Table, key string) (*Table, error) {
 	if i < 0 {
 		return nil, fmt.Errorf("unknown sort column %q", key)
 	}
-	out, ch := in.child(in.Header)
+	out, em := in.child(in.Header)
 	go func() {
-		defer close(ch)
+		defer em.close()
 		var rows []Row
-		for r := range in.Rows {
-			rows = append(rows, r)
+		for batch := range in.Rows {
+			for _, r := range batch {
+				rows = append(rows, r)
+			}
 		}
 		if mon := in.monitor(); mon != nil && len(rows) > 100_000 {
 			mon.Note("sort buffered %s rows in memory; sort after -group or -limit when the input is large.", commas(int64(len(rows))))
@@ -251,7 +255,7 @@ func Sort(in *Table, key string) (*Table, error) {
 			return c
 		})
 		for _, k := range keyed {
-			if !out.send(ch, k.row) {
+			if !em.send(k.row) {
 				return
 			}
 		}

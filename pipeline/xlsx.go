@@ -19,46 +19,46 @@ const FormatXLSX Format = "xlsx"
 // ReadXLSX streams one sheet of a workbook: by name, by 1-based index, or
 // the first sheet when sheet is "".
 func ReadXLSX(ctx context.Context, r io.Reader, sheet string) *Table {
-	t, ch := newRoot(ctx, nil)
+	t, em := newRoot(ctx, nil)
 	f, size, cleanup, err := seekable(r)
 	if err != nil {
 		t.fail(err)
-		close(ch)
+		em.close()
 		return t
 	}
 	zr, err := zip.NewReader(f, size)
 	if err == nil {
 		var wb *workbook
 		if wb, err = loadWorkbook(zr, sheet); err == nil {
-			rows := make(chan Row, chanBuf)
+			rows := make(chan Row, 512)
 			go func() {
 				defer cleanup()
 				t.fail(wb.stream(ctx, rows))
 				close(rows)
 			}()
-			return forward(t, ch, rows)
+			return forward(t, em, rows)
 		}
 	} else {
 		err = fmt.Errorf("not an xlsx file: %w", err)
 	}
 	cleanup()
 	t.fail(err)
-	close(ch)
+	em.close()
 	return t
 }
 
 // forward takes the first row as the header and streams the rest.
-func forward(t *Table, ch chan Row, rows <-chan Row) *Table {
+func forward(t *Table, em *emitter, rows <-chan Row) *Table {
 	hdr, ok := <-rows
 	if !ok {
-		close(ch)
+		em.close()
 		return t
 	}
 	t.Header = hdr
 	go func() {
-		defer close(ch)
+		defer em.close()
 		for r := range rows {
-			if !t.send(ch, r) {
+			if !em.send(r) {
 				for range rows { // drain so the producer can finish and clean up
 				}
 				return
@@ -311,9 +311,11 @@ func writeXLSX(w io.Writer, t *Table) (int, error) {
 	}
 	writeRow(Row(t.Header), true)
 	n := 0
-	for r := range t.Rows {
-		writeRow(r, false)
-		n++
+	for batch := range t.Rows {
+		for _, r := range batch {
+			writeRow(r, false)
+			n++
+		}
 	}
 	bw.WriteString("</sheetData></worksheet>")
 	if err := bw.Flush(); err != nil {

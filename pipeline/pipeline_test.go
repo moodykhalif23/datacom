@@ -24,7 +24,7 @@ func table(t *testing.T, csvText string) *Table {
 
 func collect(tb *Table) []string {
 	var out []string
-	for r := range tb.Rows {
+	for r := range tb.Each() {
 		out = append(out, strings.Join(r, ","))
 	}
 	return out

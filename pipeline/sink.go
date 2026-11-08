@@ -57,11 +57,13 @@ func writeCSV(w io.Writer, t *Table, tsv bool) (int, error) {
 		return 0, err
 	}
 	n := 0
-	for r := range t.Rows {
-		if err := cw.Write(r); err != nil {
-			return n, err
+	for batch := range t.Rows {
+		for _, r := range batch {
+			if err := cw.Write(r); err != nil {
+				return n, err
+			}
+			n++
 		}
-		n++
 	}
 	cw.Flush()
 	return n, cw.Error()
@@ -79,29 +81,31 @@ func writeJSON(w *bufio.Writer, t *Table, array bool) (int, error) {
 	}
 	n := 0
 	buf := make([]byte, 0, 1024)
-	for r := range t.Rows {
-		buf = buf[:0]
-		if array {
-			if n > 0 {
-				buf = append(buf, ',')
+	for batch := range t.Rows {
+		for _, r := range batch {
+			buf = buf[:0]
+			if array {
+				if n > 0 {
+					buf = append(buf, ',')
+				}
+				buf = append(buf, "\n  "...)
 			}
-			buf = append(buf, "\n  "...)
-		}
-		buf = append(buf, '{')
-		for i, k := range keys {
-			if i > 0 {
-				buf = append(buf, ',')
+			buf = append(buf, '{')
+			for i, k := range keys {
+				if i > 0 {
+					buf = append(buf, ',')
+				}
+				buf = appendJSONValue(append(buf, k...), r.Get(i))
 			}
-			buf = appendJSONValue(append(buf, k...), r.Get(i))
+			buf = append(buf, '}')
+			if !array {
+				buf = append(buf, '\n')
+			}
+			if _, err := w.Write(buf); err != nil {
+				return n, err
+			}
+			n++
 		}
-		buf = append(buf, '}')
-		if !array {
-			buf = append(buf, '\n')
-		}
-		if _, err := w.Write(buf); err != nil {
-			return n, err
-		}
-		n++
 	}
 	if array {
 		w.WriteString("\n]\n")
@@ -155,15 +159,17 @@ func writeTable(w io.Writer, t *Table, md bool) (int, error) {
 		widths[i] = utf8.RuneCountInString(h)
 		numeric[i] = true
 	}
-	for r := range t.Rows {
-		for i := range t.Header {
-			v := r.Get(i)
-			widths[i] = max(widths[i], min(utf8.RuneCountInString(v), maxWidth))
-			if v != "" && numeric[i] {
-				_, numeric[i] = ParseFloat(v)
+	for batch := range t.Rows {
+		for _, r := range batch {
+			for i := range t.Header {
+				v := r.Get(i)
+				widths[i] = max(widths[i], min(utf8.RuneCountInString(v), maxWidth))
+				if v != "" && numeric[i] {
+					_, numeric[i] = ParseFloat(v)
+				}
 			}
+			rows = append(rows, r)
 		}
-		rows = append(rows, r)
 	}
 	line := func(r Row) string {
 		parts := make([]string, len(t.Header))

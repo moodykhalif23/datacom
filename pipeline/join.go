@@ -24,31 +24,35 @@ func Join(left, right *Table, on string) (*Table, error) {
 	}
 	uniqueHeaders(hdr)
 	width := len(right.Header) - 1
-	out, ch := left.child(hdr)
+	out, em := left.child(hdr)
 	go func() {
-		defer close(ch)
+		defer em.close()
 		lookup := map[string][]Row{}
-		for r := range right.Rows {
-			r = fit(r, len(right.Header))
-			k := strings.ToLower(r[ri])
-			lookup[k] = append(lookup[k], append(r[:ri:ri], r[ri+1:]...))
+		for batch := range right.Rows {
+			for _, r := range batch {
+				r = fit(r, len(right.Header))
+				k := strings.ToLower(r[ri])
+				lookup[k] = append(lookup[k], append(r[:ri:ri], r[ri+1:]...))
+			}
 		}
 		if err := right.Err(); err != nil {
 			out.fail(err)
 			return
 		}
-		for l := range left.Rows {
-			l = fit(l, len(left.Header))
-			matches := lookup[strings.ToLower(l[li])]
-			if len(matches) == 0 {
-				matches = []Row{make(Row, width)}
-				if mon := left.monitor(); mon != nil {
-					mon.Unmatched.Add(1)
+		for batch := range left.Rows {
+			for _, l := range batch {
+				l = fit(l, len(left.Header))
+				matches := lookup[strings.ToLower(l[li])]
+				if len(matches) == 0 {
+					matches = []Row{make(Row, width)}
+					if mon := left.monitor(); mon != nil {
+						mon.Unmatched.Add(1)
+					}
 				}
-			}
-			for _, m := range matches {
-				if !out.send(ch, append(append(make(Row, 0, len(hdr)), l...), m...)) {
-					return
+				for _, m := range matches {
+					if !em.send(append(append(make(Row, 0, len(hdr)), l...), m...)) {
+						return
+					}
 				}
 			}
 		}

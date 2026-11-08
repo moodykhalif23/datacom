@@ -270,6 +270,7 @@ func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow
 		if f == "" {
 			f = pipeline.FormatNDJSON
 		}
+		ctx = pipeline.WithLive(ctx) // rows must not wait in a batch for more to arrive
 		return pipeline.Read(ctx, meter(mon, r), f), func() error { return nil }, nil
 	}
 	r, f, closeFn, err := pipeline.Open(ctx, src, pipeline.Format(o.inFormat))

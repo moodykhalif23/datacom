@@ -32,10 +32,7 @@ const (
 )
 
 // serveUI runs the point-and-click interface on addr until ctx is done.
-// Everything it does goes through run, exactly as the command line does, so
-// the two never disagree. The page talks only to this process, and every API
-// call carries a token minted at startup so other pages in the browser
-// cannot reach it.
+
 func serveUI(ctx context.Context, addr string, openBrowser bool) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil && strings.HasSuffix(addr, ":"+uiPort) {
@@ -235,7 +232,7 @@ func (s *uiServer) columns(w http.ResponseWriter, r *http.Request) {
 	}
 	hdr := t.Header
 	cancel()
-	for range t.Rows { // let every stage unwind before the source closes
+	for range t.Each() { // let every stage unwind before the source closes
 	}
 	reply(w, map[string]any{"columns": hdr})
 }
@@ -383,7 +380,7 @@ func (j *job) makePreview() (preview, error) {
 	defer closeFn()
 	t := pipeline.Read(ctx, r, f)
 	pv := preview{Header: t.Header}
-	for row := range t.Rows {
+	for row := range t.Each() {
 		pv.Rows = append(pv.Rows, row)
 		if len(pv.Rows) == previewRows {
 			cancel()
