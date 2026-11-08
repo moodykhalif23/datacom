@@ -14,10 +14,6 @@ import (
 	"unicode/utf8"
 )
 
-// sniffDelimiter picks the field separator of a delimited file from its
-// first line: comma, semicolon, tab or pipe, whichever appears most often
-// outside quotes. European Excel exports use semicolons; comma is the
-// default.
 func sniffDelimiter(br *bufio.Reader) rune {
 	head, _ := br.Peek(64 << 10)
 	if i := bytes.IndexByte(head, '\n'); i >= 0 {
