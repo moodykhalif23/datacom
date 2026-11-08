@@ -10,18 +10,20 @@ func Filter(in *Table, conds []Expr) *Table {
 	if len(conds) == 0 {
 		return in
 	}
-	out, ch := in.child(in.Header)
+	out, em := in.child(in.Header)
 	go func() {
-		defer close(ch)
-	rows:
-		for r := range in.Rows {
-			for _, c := range conds {
-				if !c(r).truthy() {
-					continue rows
+		defer em.close()
+		for batch := range in.Rows {
+		rows:
+			for _, r := range batch {
+				for _, c := range conds {
+					if !c(r).truthy() {
+						continue rows
+					}
 				}
-			}
-			if !out.send(ch, r) {
-				return
+				if !em.send(r) {
+					return
+				}
 			}
 		}
 	}()
@@ -57,16 +59,18 @@ func Derive(in *Table, defs []string) (*Table, error) {
 		}
 		cols[i] = derived{idx, e}
 	}
-	out, ch := in.child(hdr)
+	out, em := in.child(hdr)
 	go func() {
-		defer close(ch)
-		for r := range in.Rows {
-			r = fit(r, len(hdr))
-			for _, c := range cols {
-				r[c.idx] = c.e(r).String()
-			}
-			if !out.send(ch, r) {
-				return
+		defer em.close()
+		for batch := range in.Rows {
+			for _, r := range batch {
+				r = fit(r, len(hdr))
+				for _, c := range cols {
+					r[c.idx] = c.e(r).String()
+				}
+				if !em.send(r) {
+					return
+				}
 			}
 		}
 	}()
@@ -92,16 +96,18 @@ func Select(in *Table, cols []string) (*Table, error) {
 			hdr[i] = alias
 		}
 	}
-	out, ch := in.child(hdr)
+	out, em := in.child(hdr)
 	go func() {
-		defer close(ch)
-		for r := range in.Rows {
-			nr := make(Row, len(idx))
-			for i, j := range idx {
-				nr[i] = r.Get(j)
-			}
-			if !out.send(ch, nr) {
-				return
+		defer em.close()
+		for batch := range in.Rows {
+			for _, r := range batch {
+				nr := make(Row, len(idx))
+				for i, j := range idx {
+					nr[i] = r.Get(j)
+				}
+				if !em.send(nr) {
+					return
+				}
 			}
 		}
 	}()
@@ -114,17 +120,19 @@ func Limit(in *Table, n int) *Table {
 	if n <= 0 {
 		return in
 	}
-	out, ch := in.child(in.Header)
+	out, em := in.child(in.Header)
 	go func() {
-		defer close(ch)
+		defer em.close()
 		i := 0
-		for r := range in.Rows {
-			if !out.send(ch, r) {
-				return
-			}
-			if i++; i == n {
-				in.run.cancel()
-				return
+		for batch := range in.Rows {
+			for _, r := range batch {
+				if !em.send(r) {
+					return
+				}
+				if i++; i == n {
+					in.run.cancel()
+					return
+				}
 			}
 		}
 	}()

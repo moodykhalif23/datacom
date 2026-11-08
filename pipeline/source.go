@@ -112,6 +112,9 @@ func guessFormat(name string, br *bufio.Reader) Format {
 // Read streams rows from r. Cancelling ctx stops the pipeline; errors are
 // reported by Table.Err once the Rows channel closes.
 func Read(ctx context.Context, r io.Reader, f Format) *Table {
+	if _, ok := r.(*follower); ok {
+		ctx = WithLive(ctx) // a followed file never ends; rows must not wait in a batch
+	}
 	switch f {
 	case FormatCSV, FormatTSV:
 		return readCSV(ctx, r, f == FormatTSV)
@@ -122,9 +125,9 @@ func Read(ctx context.Context, r io.Reader, f Format) *Table {
 	case FormatParquet:
 		return ReadParquet(ctx, r)
 	}
-	t, ch := newRoot(ctx, nil)
+	t, em := newRoot(ctx, nil)
 	t.fail(fmt.Errorf("unsupported input format %q", f))
-	close(ch)
+	em.close()
 	return t
 }
 
@@ -140,16 +143,16 @@ func readCSV(ctx context.Context, r io.Reader, tsv bool) *Table {
 	if len(hdr) > 0 {
 		hdr[0] = strings.TrimPrefix(hdr[0], "\uFEFF")
 	}
-	t, ch := newRoot(ctx, hdr)
+	t, em := newRoot(ctx, hdr)
 	if err != nil {
 		if err != io.EOF {
 			t.fail(fmt.Errorf("read header: %w", err))
 		}
-		close(ch)
+		em.close()
 		return t
 	}
 	go func() {
-		defer close(ch)
+		defer em.close()
 		for {
 			rec, err := cr.Read()
 			if err != nil {
@@ -158,7 +161,7 @@ func readCSV(ctx context.Context, r io.Reader, tsv bool) *Table {
 				}
 				return
 			}
-			if !t.send(ch, rec) {
+			if !em.send(rec) {
 				return
 			}
 		}
@@ -172,11 +175,11 @@ func readJSON(ctx context.Context, r io.Reader, array bool) *Table {
 		for {
 			tok, err := dec.Token()
 			if err != nil {
-				t, ch := newRoot(ctx, nil)
+				t, em := newRoot(ctx, nil)
 				if err != io.EOF {
 					t.fail(fmt.Errorf("json: no array found: %w", err))
 				}
-				close(ch)
+				em.close()
 				return t
 			}
 			if d, ok := tok.(json.Delim); ok && d == '[' {
@@ -190,19 +193,19 @@ func readJSON(ctx context.Context, r io.Reader, array bool) *Table {
 	if !array || dec.More() {
 		keys, first, err = firstObject(dec)
 	}
-	t, ch := newRoot(ctx, keys)
+	t, em := newRoot(ctx, keys)
 	if err != nil {
 		if err != io.EOF {
 			t.fail(fmt.Errorf("read first object: %w", err))
 		}
-		close(ch)
+		em.close()
 		return t
 	}
 	go func() {
-		defer close(ch)
+		defer em.close()
 		obj := first
 		for {
-			if !t.send(ch, objToRow(obj, t.Header)) {
+			if !em.send(objToRow(obj, t.Header)) {
 				return
 			}
 			if array && !dec.More() {
