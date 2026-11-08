@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `datacom ui` opens a browser interface for people who do not use a terminal: drop a file in, choose Summarize, Clean, Pick-filter-total, Convert or Watch, set options built from the file's own columns, and download the result. It is served by the same binary from the standard library, runs offline on Windows, macOS and Linux, and drives the same `run` path as the command line.
 - Faster: `-sort` parses each key once instead of on every comparison, and plain `YYYY-MM-DD` dates skip the layout search in type normalization. `clean` on 1M messy rows went from 5.8 s to 2.6 s on the benchmark machine; canonical numbers and null checks take fast paths too.
 - `tools/bench.sh` benchmarks datacom against Miller, csvtk, qsv, xsv, DuckDB and csvkit on the same generated data; `docs/benchmarks.md` has the results and how to reproduce them.
 - `-sort` keeps empty cells last in descending order too; they used to come first when the key had a leading `-`.

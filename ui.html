@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>datacom</title>
+<style>
+:root {
+  color-scheme: light;
+  --paper: #f7f6f2; --ink: #1d1d1b; --muted: #6b6960; --line: #cdc9bf; --line-soft: #e5e2d9;
+  --field: #fffdf9; --accent: #1f4e79; --accent-ink: #ffffff; --error: #8a2b1a; --error-bg: #fbeae6;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --paper: #1c1c1a; --ink: #ebe8e0; --muted: #a39f94; --line: #4b4942; --line-soft: #34332f;
+    --field: #242421; --accent: #93b8de; --accent-ink: #0f1519; --error: #f0a394; --error-bg: #3b2019;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body { margin: 0; color: var(--ink); font: 16px/1.5 var(--sans); }
+main { max-width: 760px; margin: 0 auto; padding: 0 20px 72px; }
+header { max-width: 760px; margin: 0 auto; padding: 44px 20px 18px; border-bottom: 1px solid var(--line); }
+h1 { margin: 0; font: 400 36px/1.1 var(--serif); letter-spacing: .005em; }
+.lede { margin: 10px 0 0; color: var(--muted); max-width: 60ch; }
+section { padding: 30px 0; border-bottom: 1px solid var(--line-soft); }
+h2 { margin: 0 0 4px; font: 400 23px/1.2 var(--serif); }
+h2 .n { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
+h2 + .help { margin-top: 0; margin-bottom: 18px; }
+p { margin: 10px 0; }
+.help { color: var(--muted); font-size: 14px; margin: 4px 0 0; }
+.help code { font: 13px var(--mono); background: var(--line-soft); padding: 1px 5px; border-radius: 3px; }
+label { display: block; font-weight: 600; margin: 14px 0 4px; }
+label.check { display: flex; gap: 10px; align-items: baseline; font-weight: 400; margin: 8px 0; }
+label.check .help { display: block; margin: 0; }
+input[type=text], input[type=number], select {
+  font: inherit; color: inherit; background: var(--field); border: 1px solid var(--line);
+  border-radius: 3px; padding: 7px 9px; width: 100%; max-width: 100%;
+}
+input[type=text]::placeholder { color: var(--muted); opacity: .8; }
+input.short { width: 9em; }
+select.col, select.cond, select.fn { width: auto; max-width: 100%; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button { font: inherit; cursor: pointer; border-radius: 3px; }
+button:disabled { opacity: .5; cursor: default; }
+.primary { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); padding: 10px 22px; font-weight: 600; }
+.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 7px 14px; }
+.linkish { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; }
+.linkish.x { text-decoration: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 4px; }
+a { color: var(--accent); }
+.inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.inline > input[type=text] { flex: 1 1 240px; }
+.drop { border: 1px dashed var(--line); background: var(--field); border-radius: 3px; padding: 30px 20px; text-align: center; }
+.drop.over { border-color: var(--accent); border-style: solid; }
+.drop p { margin: 0; }
+.drop label { display: inline; font-weight: 400; margin: 0; }
+.status { color: var(--muted); font-size: 14px; }
+.status.ok { color: var(--ink); }
+.choices { border-top: 1px solid var(--line-soft); }
+.choices label { display: grid; grid-template-columns: 22px 1fr; gap: 2px 10px; padding: 12px 0; margin: 0; border-bottom: 1px solid var(--line-soft); font-weight: 400; cursor: pointer; }
+.choices input { margin: 5px 0 0; }
+.choices b { font-weight: 600; }
+.choices span { grid-column: 2; color: var(--muted); font-size: 14px; }
+fieldset { border: 1px solid var(--line-soft); border-radius: 3px; padding: 6px 16px 16px; margin: 16px 0 0; min-width: 0; }
+legend { font-weight: 600; padding: 0 6px; }
+fieldset > .help:first-of-type { margin-top: 0; }
+.rows { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.rows .inline { gap: 8px; }
+.rows input[type=text] { flex: 1 1 140px; width: auto; }
+.rows .eq { color: var(--muted); }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 6px 0 0; }
+.checks label { font-weight: 400; margin: 0; display: flex; gap: 6px; align-items: baseline; }
+details { margin-top: 10px; }
+details summary { cursor: pointer; color: var(--accent); }
+details[open] summary { margin-bottom: 6px; }
+.panel[hidden] { display: none; }
+#results { margin-top: 20px; }
+#summary { font-size: 17px; }
+#findings { padding-left: 20px; margin: 8px 0 0; }
+#findings li { margin: 4px 0; }
+.button { display: inline-block; background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 8px 16px; text-decoration: none; font-weight: 600; margin-top: 10px; }
+.button:hover { border-color: var(--accent); }
+pre { font: 13px/1.45 var(--mono); background: var(--field); border: 1px solid var(--line-soft); border-radius: 3px; padding: 14px; overflow: auto; max-height: 600px; margin: 14px 0 0; }
+.tablewrap { overflow: auto; max-height: 480px; border: 1px solid var(--line-soft); border-radius: 3px; margin-top: 8px; }
+table { border-collapse: collapse; font: 13px/1.4 var(--mono); min-width: 100%; }
+th { text-align: left; position: sticky; top: 0; background: var(--paper); border-bottom: 1px solid var(--line); padding: 7px 10px; white-space: nowrap; }
+td { border-bottom: 1px solid var(--line-soft); padding: 5px 10px; white-space: nowrap; max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+td.num, th.num { text-align: right; }
+td:empty::after { content: "—"; color: var(--line); }
+.caption { color: var(--muted); font-size: 14px; margin: 14px 0 0; }
+.error { color: var(--error); background: var(--error-bg); border: 1px solid var(--error); border-radius: 3px; padding: 10px 14px; margin-top: 16px; }
+footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(--muted); font-size: 13px; }
+@media (max-width: 560px) {
+  header { padding-top: 28px; }
+  h1 { font-size: 30px; }
+  .rows .inline > * { flex: 1 1 100%; }
+  select.col, select.cond, select.fn { width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>datacom</h1>
+  <p class="lede">Turns a large, messy spreadsheet or data file into clean, readable data. Nothing leaves your computer: this page only talks to the datacom program running on it.</p>
+</header>
+
+<main>
+<section>
+  <h2><span class="n">1.</span>Your file</h2>
+  <p class="help">CSV, TSV, JSON, NDJSON, Excel (.xlsx) or Parquet, plain or gzipped.</p>
+  <div class="drop" id="drop">
+    <p><strong>Drop a file here</strong> or <label class="linkish" for="file">choose one</label><input type="file" id="file" hidden></p>
+  </div>
+  <label for="path">Or type where the file is</label>
+  <div class="inline">
+    <input type="text" id="path" placeholder="C:\Users\you\Downloads\sales.csv   or   https://example.org/data.csv.gz" spellcheck="false">
+    <button class="secondary" id="usePath">Use this</button>
+  </div>
+  <p class="help">Best for very large files (nothing is copied) and required for Watch. Web addresses work too.</p>
+  <div id="sheetRow" hidden>
+    <label for="sheet">Excel sheet</label>
+    <input type="text" id="sheet" placeholder="first sheet" class="short">
+    <p class="help">A sheet name or its number. Leave blank for the first sheet.</p>
+  </div>
+  <details>
+    <summary>The file type is not being detected</summary>
+    <label for="input">Treat the file as</label>
+    <select id="input">
+      <option value="auto">Detect from the name and contents</option>
+      <option value="csv">CSV (commas)</option>
+      <option value="tsv">TSV (tabs)</option>
+      <option value="json">JSON (an array of objects)</option>
+      <option value="ndjson">NDJSON (one JSON object per line)</option>
+      <option value="xlsx">Excel workbook</option>
+      <option value="parquet">Parquet</option>
+    </select>
+  </details>
+  <p class="status" id="fileStatus">No file chosen yet.</p>
+</section>
+
+<section>
+  <h2><span class="n">2.</span>What do you want to do?</h2>
+  <div class="choices">
+    <label><input type="radio" name="cmd" value="profile" checked><b>Summarize</b><span>See what is in the file: each column's type, how much is missing, the common values, duplicates and oddities. Nothing is changed.</span></label>
+    <label><input type="radio" name="cmd" value="clean"><b>Clean</b><span>Fix numbers, dates, yes/no values and stray spaces; drop empty and duplicate rows; tidy column names. You get a new file.</span></label>
+    <label><input type="radio" name="cmd" value="query"><b>Pick, filter and total</b><span>Keep only some rows or columns, add calculated columns, sum or count by group, sort. Cleaning happens first.</span></label>
+    <label><input type="radio" name="cmd" value="convert"><b>Convert</b><span>Save the file as another type, for example Excel to CSV or CSV to Parquet. Values are copied exactly as they are.</span></label>
+    <label><input type="radio" name="cmd" value="watch"><b>Watch</b><span>Follow a file that is still being written to, and show a fresh summary every few seconds.</span></label>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">3.</span>Options</h2>
+
+  <div class="panel" data-for="profile">
+    <label for="top">Common values to list for each column</label>
+    <input type="number" id="top" class="short" min="1" value="5">
+    <label class="check"><input type="checkbox" id="json">Give me the report as JSON instead of text</label>
+  </div>
+
+  <div class="panel" data-for="clean query watch">
+    <fieldset>
+      <legend>Cleaning</legend>
+      <p class="help">Numbers like “KES 1,250.00” become 1250, dates become 2025-01-15, yes/no become true/false, spacing is tidied. Values that do not fit their column are kept as written and reported.</p>
+      <label class="check"><input type="checkbox" id="snake"><span>Tidy column names <span class="help">lower-case with underscores: “Total Amount (KES)” becomes total_amount_kes</span></span></label>
+      <label class="check"><input type="checkbox" id="dedupe">Remove duplicate rows</label>
+      <label class="check"><input type="checkbox" id="keepEmpty">Keep rows that are completely empty</label>
+      <label class="check"><input type="checkbox" id="noTypes">Leave numbers, dates and yes/no values exactly as written</label>
+    </fieldset>
+  </div>
+
+  <div class="panel" data-for="query watch">
+    <fieldset>
+      <legend>Keep only rows where…</legend>
+      <div class="rows" id="filters"></div>
+      <button class="linkish" id="addFilter">+ add a condition</button>
+      <p class="help">Every condition must hold. Text comparisons ignore letter case; numbers and dates compare as numbers and dates.</p>
+      <details>
+        <summary>Write a condition by hand</summary>
+        <input type="text" id="whereRaw" placeholder="amount > 1000 and status != refunded" spellcheck="false">
+        <p class="help">Examples: <code>name ~ ltd</code> (contains), <code>email =~ @gov\.ke$</code> (pattern), <code>phone not null</code>, <code>a > 1 and (b == x or c == y)</code>. Put a column name in square brackets if it has spaces: <code>[Txn Date] >= 2025-01-01</code>.</p>
+      </details>
+    </fieldset>
+
+    <fieldset>
+      <legend>Keep only these columns</legend>
+      <p class="help">Leave all unticked to keep every column.</p>
+      <div class="checks" id="columnsPick"></div>
+      <details>
+        <summary>Rename columns</summary>
+        <input type="text" id="rename" placeholder="Amount (KES) = amount, Customer Name = customer" spellcheck="false">
+        <p class="help">old name = new name, separated by commas.</p>
+      </details>
+    </fieldset>
+
+    <fieldset>
+      <legend>Add calculated columns</legend>
+      <div class="rows" id="derives"></div>
+      <button class="linkish" id="addDerive">+ add a column</button>
+      <p class="help">Examples: <code>amount * 0.84</code>, <code>if(amount > 1000, high, low)</code>, <code>year(date)</code>, <code>lower(status)</code>, <code>concat(first, ' ', last)</code>. Using an existing column's name replaces it. Available: round, abs, len, lower, upper, trim, concat, year, month, day, if, coalesce.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Totals by group</legend>
+      <p class="help">One row comes out per group, with the totals you ask for. With nothing ticked, one row for the whole file.</p>
+      <label>Group rows by</label>
+      <div class="checks" id="groupPick"></div>
+      <label>Totals</label>
+      <div class="rows" id="aggs"></div>
+      <button class="linkish" id="addAgg">+ add a total</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Order and size</legend>
+      <label for="sortCol">Sort by</label>
+      <div class="inline">
+        <select id="sortCol" class="col"></select>
+        <select id="sortDir" class="cond"><option value="">smallest or A first</option><option value="-">largest or Z first</option></select>
+      </div>
+      <p class="help">Empty values always go last.</p>
+      <label for="limit">Stop after</label>
+      <div class="inline"><input type="number" id="limit" class="short" min="0" placeholder="all"> rows</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Add columns from another file</legend>
+      <p class="help">Looks up each row's value in the other file and appends that file's columns, like VLOOKUP. Rows with no match get empty columns.</p>
+      <div class="inline">
+        <label class="linkish" for="joinFile" style="margin:0;font-weight:400">Choose the other file</label><input type="file" id="joinFile" hidden>
+        <span class="status">or</span>
+        <input type="text" id="joinPath" placeholder="path or web address" spellcheck="false">
+        <button class="secondary" id="useJoinPath">Use this</button>
+      </div>
+      <p class="status" id="joinStatus"></p>
+      <label for="joinKey">Match on this column</label>
+      <select id="joinKey" class="col"></select>
+      <label for="joinRightKey">…which is called this in the other file (if different)</label>
+      <input type="text" id="joinRightKey" placeholder="same name" spellcheck="false">
+    </fieldset>
+  </div>
+
+  <div class="panel" data-for="clean query convert">
+    <label for="format">Save the result as</label>
+    <select id="format">
+      <option value="csv">CSV (.csv) — opens anywhere</option>
+      <option value="xlsx">Excel (.xlsx)</option>
+      <option value="tsv">Tab-separated (.tsv)</option>
+      <option value="json">JSON (.json)</option>
+      <option value="ndjson">NDJSON, one row per line (.ndjson)</option>
+      <option value="parquet">Parquet (.parquet)</option>
+      <option value="md">Markdown table (.md)</option>
+    </select>
+  </div>
+
+  <div class="panel" data-for="watch">
+    <label for="every">Show a fresh summary every</label>
+    <div class="inline"><input type="text" id="every" class="short" value="10s"><span class="help">for example 10s, 1m, 2m30s</span></div>
+    <p class="help">Watch needs a file path (step 1), not a copy, so it can see the file grow. It keeps going until you press Stop.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">4.</span>Run</h2>
+  <div class="inline">
+    <button class="primary" id="run">Run</button>
+    <button class="secondary" id="stop" hidden>Stop</button>
+    <span class="status" id="progress"></span>
+  </div>
+  <div class="error" id="error" hidden></div>
+  <div id="results" hidden>
+    <p id="summary"></p>
+    <ul id="findings"></ul>
+    <p id="downloadRow" hidden><a class="button" id="download" href="#">Download</a></p>
+    <p class="caption" id="caption" hidden></p>
+    <div class="tablewrap" id="tableWrap" hidden><table id="table"></table></div>
+    <pre id="text" hidden></pre>
+  </div>
+</section>
+</main>
+
+<footer>{{VERSION}} · the same engine as the command line, so results match exactly.</footer>
+
+<script>
+(() => {
+"use strict";
+const TOKEN = "{{TOKEN}}";
+const $ = (id) => document.getElementById(id);
+const S = { source: "", name: "", columns: [], loadedSnake: false, job: null, jobCmd: "", timer: null, join: { source: "", name: "" } };
+
+const CONDS = [
+  ["eq", "is"], ["ne", "is not"], ["gt", "is more than"], ["lt", "is less than"],
+  ["ge", "is at least"], ["le", "is at most"], ["contains", "contains"],
+  ["matches", "matches the pattern"], ["empty", "is empty"], ["notempty", "is not empty"],
+];
+const FUNCS = [
+  ["count", "count rows"], ["countcol", "count filled values of"], ["sum", "sum of"],
+  ["avg", "average of"], ["min", "smallest"], ["max", "largest"],
+  ["distinct", "number of different values in"], ["first", "first value of"], ["last", "last value of"],
+];
+const KEYWORDS = new Set(["and", "or", "not", "is", "null", "true", "false"]);
+
+const cmd = () => document.querySelector("input[name=cmd]:checked").value;
+const fmt = (n) => Number(n || 0).toLocaleString();
+const mb = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB";
+const secs = (s) => s >= 60 ? Math.floor(s / 60) + " min " + Math.round(s % 60) + " s" : (s >= 10 ? Math.round(s) : s.toFixed(1)) + " s";
+const basename = (p) => { const parts = p.split(/[?#]/)[0].split(/[\\/]/); return parts[parts.length - 1] || p; };
+const ident = (c) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(c) && !KEYWORDS.has(c.toLowerCase()) ? c : "[" + c + "]";
+const quote = (v) => v.includes("'") ? '"' + v + '"' : "'" + v + "'";
+const snake = (h) => h.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+const snakeOn = () => $("snake").checked && ["clean", "query", "watch"].includes(cmd());
+
+function el(tag, attrs, ...children) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children) if (c != null) e.append(c);
+  return e;
+}
+
+async function api(path, body) {
+  const init = { method: body === undefined ? "GET" : "POST", headers: { "X-Token": TOKEN } };
+  if (body !== undefined) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(body); }
+  let res;
+  try { res = await fetch(path, init); }
+  catch { throw new Error("Lost contact with datacom. Is it still running in its window?"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function upload(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.setRequestHeader("X-Token", TOKEN);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let d = {};
+      try { d = JSON.parse(xhr.responseText); } catch {}
+      xhr.status < 300 ? resolve(d) : reject(new Error(d.error || xhr.statusText || "the copy failed"));
+    };
+    xhr.onerror = () => reject(new Error("the copy failed"));
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    xhr.send(fd);
+  });
+}
+
+// --- step 1: the file -----------------------------------------------------
+
+function status(text, isError) {
+  const s = $("fileStatus");
+  s.textContent = text;
+  s.className = "status" + (isError ? " error-text" : S.source ? " ok" : "");
+  if (isError) s.style.color = "var(--error)"; else s.style.color = "";
+}
+
+async function chooseFile(file) {
+  status("Copying " + file.name + "…");
+  try {
+    const d = await upload(file, (p) => status("Copying " + file.name + "… " + Math.round(p * 100) + "%"));
+    await setSource(d.path, d.name);
+  } catch (e) { status("Could not copy " + file.name + ": " + e.message, true); }
+}
+
+async function setSource(path, name) {
+  S.source = path; S.name = name; S.columns = [];
+  $("sheetRow").hidden = !/\.xlsx(\.gz)?$/i.test(name);
+  await loadColumns();
+}
+
+async function loadColumns() {
+  if (!S.source) return;
+  status("Reading " + S.name + "…");
+  try {
+    const d = await api("/api/columns", { source: S.source, input: $("input").value, sheet: $("sheet").value.trim(), snake: snakeOn() });
+    S.columns = d.columns || [];
+    S.loadedSnake = snakeOn();
+    const list = S.columns.length > 12 ? S.columns.slice(0, 12).join(", ") + ", … (" + S.columns.length + " in all)" : S.columns.join(", ");
+    status("Using " + S.name + " — " + S.columns.length + " columns: " + list);
+    rebuildColumnControls();
+  } catch (e) { status("Could not read " + S.name + ": " + e.message, true); }
+}
+
+$("file").addEventListener("change", (e) => { if (e.target.files[0]) chooseFile(e.target.files[0]); e.target.value = ""; });
+const drop = $("drop");
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault(); drop.classList.remove("over");
+  if (e.dataTransfer.files[0]) chooseFile(e.dataTransfer.files[0]);
+});
+const usePath = () => { const p = $("path").value.trim(); if (p) setSource(p, basename(p)); };
+$("usePath").addEventListener("click", usePath);
+$("path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); usePath(); } });
+$("sheet").addEventListener("change", loadColumns);
+$("input").addEventListener("change", loadColumns);
+
+// --- step 2 & 3: the action and its options -------------------------------
+
+function showPanels() {
+  const c = cmd();
+  document.querySelectorAll(".panel").forEach((p) => { p.hidden = !p.dataset.for.split(" ").includes(c); });
+  $("run").textContent = { profile: "Summarize", clean: "Clean", query: "Run", convert: "Convert", watch: "Start watching" }[c];
+  if (S.source && snakeOn() !== S.loadedSnake) loadColumns();
+}
+document.querySelectorAll("input[name=cmd]").forEach((r) => r.addEventListener("change", showPanels));
+$("snake").addEventListener("change", () => { if (S.source && snakeOn() !== S.loadedSnake) loadColumns(); });
+
+function fillColSelect(sel, cols, blank) {
+  const was = sel.value;
+  sel.replaceChildren();
+  if (blank) sel.append(el("option", { value: "" }, blank));
+  for (const c of cols) sel.append(el("option", { value: c }, c));
+  if ([...sel.options].some((o) => o.value === was)) sel.value = was;
+}
+
+function fillChecks(id, cols) {
+  const box = $(id);
+  const was = new Set(checked(id));
+  box.replaceChildren();
+  for (const c of cols) box.append(el("label", {}, el("input", { type: "checkbox", value: c, checked: was.has(c) }), c));
+  if (!cols.length) box.append(el("span", { class: "status" }, "Choose a file first."));
+}
+
+const checked = (id) => [...$(id).querySelectorAll("input:checked")].map((i) => i.value);
+
+function rebuildColumnControls() {
+  document.querySelectorAll("#filters select.col, #aggs select.col").forEach((s) => fillColSelect(s, S.columns));
+  fillColSelect($("joinKey"), S.columns);
+  fillChecks("columnsPick", S.columns);
+  fillChecks("groupPick", S.columns);
+  refreshSort();
+}
+
+function addFilter() {
+  const row = el("div", { class: "inline" });
+  const col = el("select", { class: "col" });
+  fillColSelect(col, S.columns);
+  const cond = el("select", { class: "cond" });
+  for (const [v, t] of CONDS) cond.append(el("option", { value: v }, t));
+  const val = el("input", { type: "text", placeholder: "value" });
+  cond.addEventListener("change", () => { val.hidden = cond.value === "empty" || cond.value === "notempty"; });
+  row.append(col, cond, val, el("button", { class: "linkish x", title: "remove", onclick: () => row.remove() }, "×"));
+  $("filters").append(row);
+}
+
+function addDerive() {
+  const row = el("div", { class: "inline" });
+  row.append(
+    el("input", { type: "text", class: "name", placeholder: "new column name", spellcheck: "false" }),
+    el("span", { class: "eq" }, "="),
+    el("input", { type: "text", class: "expr", placeholder: "amount * 0.84", spellcheck: "false", oninput: refreshSort }),
+    el("button", { class: "linkish x", title: "remove", onclick: () => { row.remove(); refreshSort(); } }, "×"));
+  $("derives").append(row);
+}
+
+function addAgg() {
+  const row = el("div", { class: "inline" });
+  const fn = el("select", { class: "fn" });
+  for (const [v, t] of FUNCS) fn.append(el("option", { value: v }, t));
+  const col = el("select", { class: "col" });
+  fillColSelect(col, S.columns);
+  fn.addEventListener("change", () => { col.hidden = fn.value === "count"; refreshSort(); });
+  col.hidden = true;
+  col.addEventListener("change", refreshSort);
+  row.append(fn, col, el("button", { class: "linkish x", title: "remove", onclick: () => { row.remove(); refreshSort(); } }, "×"));
+  $("aggs").append(row);
+  refreshSort();
+}
+
+$("addFilter").addEventListener("click", addFilter);
+$("addDerive").addEventListener("click", addDerive);
+$("addAgg").addEventListener("click", addAgg);
+$("columnsPick").addEventListener("change", refreshSort);
+$("groupPick").addEventListener("change", refreshSort);
+$("rename").addEventListener("input", refreshSort);
+
+const filterRows = () => [...$("filters").children].map((r) => ({ col: r.children[0].value, cond: r.children[1].value, val: r.children[2].value }));
+const deriveRows = () => [...$("derives").children].map((r) => ({ name: r.querySelector(".name").value.trim(), expr: r.querySelector(".expr").value.trim() }));
+const aggRows = () => [...$("aggs").children].map((r) => ({ fn: r.children[0].value, col: r.children[1].value }));
+
+function parseRenames(s) {
+  const m = {};
+  for (const part of s.split(",")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    const from = part.slice(0, i).trim(), to = part.slice(i + 1).trim();
+    if (from && to) m[from.toLowerCase()] = to;
+  }
+  return m;
+}
+
+// outputColumns mirrors what the pipeline will produce, so the sort menu
+// offers names that exist at the point where sorting happens.
+function outputColumns() {
+  const groups = checked("groupPick"), aggs = aggRows();
+  if (groups.length || aggs.length) {
+    return groups.concat(aggs.map((a) => a.fn === "count" ? "count" : (a.fn === "countcol" ? "count" : a.fn) + "_" + snake(a.col)));
+  }
+  let cols = S.columns.slice();
+  for (const d of deriveRows()) if (d.name && !cols.some((c) => c.toLowerCase() === d.name.toLowerCase())) cols.push(d.name);
+  const picks = checked("columnsPick");
+  if (picks.length) cols = picks;
+  const renames = parseRenames($("rename").value);
+  return cols.map((c) => renames[c.toLowerCase()] || c);
+}
+
+function refreshSort() { fillColSelect($("sortCol"), outputColumns(), "(keep the file's order)"); }
+
+$("joinFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; e.target.value = "";
+  if (!file) return;
+  $("joinStatus").textContent = "Copying " + file.name + "…";
+  try {
+    const d = await upload(file, (p) => { $("joinStatus").textContent = "Copying " + file.name + "… " + Math.round(p * 100) + "%"; });
+    S.join = { source: d.path, name: d.name };
+    $("joinStatus").textContent = "Using " + d.name;
+  } catch (err) { $("joinStatus").textContent = "Could not copy " + file.name + ": " + err.message; }
+});
+$("useJoinPath").addEventListener("click", () => {
+  const p = $("joinPath").value.trim();
+  if (!p) return;
+  S.join = { source: p, name: basename(p) };
+  $("joinStatus").textContent = "Using " + S.join.name;
+});
+
+// --- step 4: run ----------------------------------------------------------
+
+function buildRequest() {
+  const c = cmd();
+  const req = { cmd: c, source: S.source, name: S.name, input: $("input").value, sheet: $("sheet").value.trim() };
+  if (c === "profile") { req.top = +$("top").value || 5; req.json = $("json").checked; }
+  if (["clean", "query", "watch"].includes(c)) {
+    req.snake = $("snake").checked; req.dedupe = $("dedupe").checked;
+    req.keep_empty = $("keepEmpty").checked; req.no_types = $("noTypes").checked;
+  }
+  if (["query", "watch"].includes(c)) {
+    req.where = [];
+    for (const f of filterRows()) {
+      const col = ident(f.col), v = quote(f.val.trim());
+      if (!f.col) throw new Error("A condition has no column. Choose a file first, or remove the condition.");
+      if (!["empty", "notempty"].includes(f.cond) && !f.val.trim()) throw new Error("The condition on “" + f.col + "” needs a value.");
+      req.where.push({
+        eq: col + " == " + v, ne: col + " != " + v, gt: col + " > " + v, lt: col + " < " + v,
+        ge: col + " >= " + v, le: col + " <= " + v, contains: col + " ~ " + v, matches: col + " =~ " + v,
+        empty: col + " is null", notempty: col + " not null",
+      }[f.cond]);
+    }
+    const raw = $("whereRaw").value.trim();
+    if (raw) req.where.push(raw);
+    req.derive = [];
+    for (const d of deriveRows()) {
+      if (!d.name && !d.expr) continue;
+      if (!d.name || !d.expr) throw new Error("A calculated column needs both a name and a formula.");
+      req.derive.push(d.name + " = " + d.expr);
+    }
+    const picks = checked("columnsPick"), renames = parseRenames($("rename").value);
+    if (picks.length || Object.keys(renames).length) {
+      let cols = picks.length ? picks : S.columns.slice();
+      if (!picks.length) for (const d of deriveRows()) if (d.name && !cols.some((x) => x.toLowerCase() === d.name.toLowerCase())) cols.push(d.name);
+      req.select = cols.map((x) => renames[x.toLowerCase()] ? x + ":" + renames[x.toLowerCase()] : x).join(",");
+    }
+    req.group = checked("groupPick").join(",");
+    req.agg = aggRows().map((a) => a.fn === "count" ? "count" : (a.fn === "countcol" ? "count" : a.fn) + "(" + a.col + ")").join(", ");
+    const sc = $("sortCol").value;
+    req.sort = sc ? $("sortDir").value + sc : "";
+    req.limit = +$("limit").value || 0;
+    if (S.join.source) {
+      const l = $("joinKey").value, r = $("joinRightKey").value.trim();
+      if (!l) throw new Error("Choose the column to match on for the other file.");
+      req.join = S.join.source;
+      req.on = r && r.toLowerCase() !== l.toLowerCase() ? l + "=" + r : l;
+    }
+  }
+  if (["clean", "query", "convert"].includes(c)) req.format = $("format").value;
+  if (c === "watch") req.every = $("every").value.trim() || "10s";
+  return req;
+}
+
+function clearResults() {
+  $("error").hidden = true; $("results").hidden = true;
+  for (const id of ["downloadRow", "caption", "tableWrap", "text"]) $(id).hidden = true;
+  $("findings").replaceChildren(); $("summary").textContent = "";
+}
+function showError(msg) { $("error").textContent = msg; $("error").hidden = false; }
+function progress(text) { $("progress").textContent = text; }
+function finishUI() { $("run").disabled = false; $("stop").hidden = true; progress(""); S.job = null; }
+
+async function runJob() {
+  clearResults();
+  if (!S.source) { showError("Choose a file first (step 1)."); return; }
+  let req;
+  try { req = buildRequest(); } catch (e) { showError(e.message); return; }
+  $("run").disabled = true; $("stop").hidden = false; progress("Starting…");
+  try {
+    const { id } = await api("/api/run", req);
+    S.job = id; S.jobCmd = req.cmd;
+    poll();
+  } catch (e) { showError(e.message); finishUI(); }
+}
+
+async function poll() {
+  if (!S.job) return;
+  let st;
+  try { st = await api("/api/job/" + S.job); }
+  catch (e) { showError(e.message); finishUI(); return; }
+  if (!st.done) {
+    progress("Working… " + fmt(st.rows_in) + " rows read" + (st.bytes ? " · " + mb(st.bytes) : "") + " · " + secs(st.seconds));
+    if (st.text !== undefined) showText(st.text);
+    S.timer = setTimeout(poll, 500);
+    return;
+  }
+  render(st);
+  finishUI();
+}
+
+$("run").addEventListener("click", runJob);
+$("stop").addEventListener("click", async () => { if (S.job) { try { await api("/api/job/" + S.job + "/cancel", {}); } catch {} } });
+
+function showText(text) {
+  $("results").hidden = false;
+  $("text").textContent = text || "(nothing yet)";
+  $("text").hidden = false;
+}
+
+function render(st) {
+  const c = S.jobCmd, r = st.report || {}, t = secs(st.seconds || 0);
+  $("results").hidden = false;
+  if (st.error) {
+    if (st.error === "interrupted" || /context canceled/.test(st.error)) {
+      $("summary").textContent = "Stopped after " + t + ". " + fmt(r.rows_in) + " rows had been read; nothing was saved.";
+    } else {
+      showError("Something went wrong: " + st.error);
+      $("results").hidden = true;
+    }
+    return;
+  }
+  const read = fmt(r.rows_in) + " rows read";
+  $("summary").textContent =
+    c === "profile" ? "Done in " + t + ". " + read + "." :
+    c === "watch" ? "Stopped after " + t + ". " + read + "." :
+    "Done in " + t + ". " + read + ", " + fmt(r.rows_out) + " written.";
+
+  const findings = [];
+  for (const b of r.untyped_values || []) {
+    findings.push("Column “" + b.column + "”: " + fmt(b.count) + " values are not " + ({ int: "whole numbers", float: "numbers", date: "dates", bool: "yes/no" }[b.kind] || b.kind) +
+      ", for example " + b.examples.map((e) => "“" + e + "”").join(", ") + ". They were kept as written. Fix them in the source or filter them out.");
+  }
+  if (r.rows_padded && r.rows_trimmed) findings.push(fmt(r.rows_padded) + " rows had too few columns and " + fmt(r.rows_trimmed) + " too many. Look for stray commas or quotes in the source.");
+  else if (r.rows_padded || r.rows_trimmed) findings.push(fmt(r.rows_padded || r.rows_trimmed) + " rows had too " + (r.rows_padded ? "few" : "many") + " columns. Look for stray commas or quotes in the source.");
+  if (r.rows_empty_dropped) findings.push(fmt(r.rows_empty_dropped) + " completely empty rows were dropped.");
+  if (r.rows_duplicate_dropped) findings.push(fmt(r.rows_duplicate_dropped) + " duplicate rows were dropped.");
+  if (r.join_unmatched) findings.push(fmt(r.join_unmatched) + " rows found no match in the other file, so their added columns are empty. Check the spelling and case of the matching column.");
+  for (const n of r.notes || []) findings.push(n);
+  if (!findings.length && c !== "profile") findings.push("Every value fit its column. Nothing to report.");
+  $("findings").replaceChildren(...findings.map((f) => el("li", {}, f)));
+
+  if (st.download) {
+    $("download").href = st.download; $("download").download = st.filename;
+    $("download").textContent = "Download " + st.filename;
+    $("downloadRow").hidden = false;
+  }
+  const pv = st.preview || {};
+  if (pv.header) {
+    const total = r.rows_out || 0, shown = (pv.rows || []).length;
+    $("caption").textContent = shown < total ? "The first " + fmt(shown) + " of " + fmt(total) + " rows:" : shown ? "All " + fmt(shown) + " rows:" : "The result has no rows.";
+    $("caption").hidden = false;
+    if (shown) renderTable(pv.header, pv.rows);
+  } else if (pv.text !== undefined) {
+    showText(pv.text);
+  }
+}
+
+function renderTable(header, rows) {
+  const numeric = header.map((_, i) => rows.every((r) => !r[i] || /^-?\d+(\.\d+)?$/.test(r[i])) && rows.some((r) => r[i]));
+  const table = $("table");
+  table.replaceChildren(
+    el("thead", {}, el("tr", {}, ...header.map((h, i) => el("th", { class: numeric[i] ? "num" : null }, h)))),
+    el("tbody", {}, ...rows.map((r) => el("tr", {}, ...header.map((_, i) => el("td", { class: numeric[i] ? "num" : null, title: r[i] || null }, r[i] || ""))))));
+  $("tableWrap").hidden = false;
+}
+
+showPanels();
+refreshSort();
+})();
+</script>
+</body>
+</html>
