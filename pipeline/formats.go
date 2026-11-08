@@ -167,10 +167,6 @@ func writeHTML(w *bufio.Writer, t *Table) (int, error) {
 	return n, err
 }
 
-// WriteSQL writes a CREATE TABLE statement typed from the first thousand
-// rows, then INSERT statements of 500 rows each, in standard SQL that
-// PostgreSQL, SQLite, MySQL and DuckDB all accept. Values that do not fit
-// their column's type are written as NULL.
 func WriteSQL(w io.Writer, t *Table, table string) (int, error) {
 	bw := bufio.NewWriterSize(w, 1<<20)
 	const sample, perInsert = 1000, 500
