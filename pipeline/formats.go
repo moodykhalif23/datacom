@@ -95,22 +95,32 @@ func (u *utf16Reader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// isWorkbook reports whether a zip archive is an Excel workbook.
-func isWorkbook(f *os.File) bool {
+// zipKind tells an Excel workbook and an OpenDocument spreadsheet from a
+// plain zip archive by the files inside.
+func zipKind(f *os.File) Format {
 	st, err := f.Stat()
 	if err != nil {
-		return false
+		return FormatZip
 	}
 	zr, err := zip.NewReader(f, st.Size())
 	if err != nil {
-		return false
+		return FormatZip
 	}
 	for _, e := range zr.File {
-		if e.Name == "xl/workbook.xml" {
-			return true
+		switch e.Name {
+		case "xl/workbook.xml":
+			return FormatXLSX
+		case "mimetype":
+			if rc, err := e.Open(); err == nil {
+				b, _ := io.ReadAll(io.LimitReader(rc, 128))
+				rc.Close()
+				if strings.Contains(string(b), "opendocument.spreadsheet") {
+					return FormatODS
+				}
+			}
 		}
 	}
-	return false
+	return FormatZip
 }
 
 // zipEntry opens the first data file inside a zip archive: an export that

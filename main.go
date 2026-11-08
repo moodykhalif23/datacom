@@ -3,6 +3,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"flag"
@@ -17,10 +18,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/moodykhalif23/datacom/pipeline"
 )
 
-const usage = `datacom — small, fast data cleaner for big files (CSV, TSV, JSON, NDJSON, Excel, gzip)
+const usage = `datacom — small, fast data cleaner for big files (CSV, JSON, XML, Excel, Parquet and more)
 
 usage:
   datacom profile [source]                     summarize a dataset
@@ -32,8 +34,9 @@ usage:
   datacom version                              build details for bug reports
 
 source is a file path, an http(s) URL, or stdin when omitted: CSV with any delimiter, TSV, JSON,
-NDJSON, Excel, Parquet, gzip or zip, UTF-8 or UTF-16. All commands accept:
-  -f  output format: table (default on a terminal), csv, tsv, json, ndjson, xlsx, parquet, html, sql, md
+NDJSON, XML, Excel, OpenDocument (.ods), Parquet, Avro, gzip, zstd or zip, UTF-8 or UTF-16. All commands accept:
+  -f  output format: table (default on a terminal), csv, tsv, json, ndjson, xlsx, ods, parquet, avro, xml, html, sql, md
+      an -o name ending in .gz or .zst is compressed
   -i  input format (default: auto-detect)      -sheet  Excel sheet name or number
   -o  write to file instead of stdout          -q      quiet: no row count on stderr
   -monitor  live progress on stderr and a report of every hiccup at the end
@@ -199,7 +202,7 @@ func run(ctx context.Context, cmd string, o opts) error {
 		defer func() { close(stop); finish(mon, o, start) }()
 	}
 
-	out := os.Stdout
+	var out io.Writer = os.Stdout
 	if o.out != "" {
 		f, err := os.Create(o.out)
 		if err != nil {
@@ -207,6 +210,10 @@ func run(ctx context.Context, cmd string, o opts) error {
 		}
 		defer f.Close()
 		out = f
+		if zw := compressedWriter(f, o.out); zw != nil {
+			defer zw.Close()
+			out = zw
+		}
 	}
 	outFmt := pipeline.Format(o.format)
 	if outFmt == "" {
@@ -266,6 +273,21 @@ func run(ctx context.Context, cmd string, o opts) error {
 	return nil
 }
 
+// compressedWriter wraps w in gzip or zstd when the output name ends in
+// .gz or .zst, so -o clean.csv.gz writes a compressed file.
+func compressedWriter(w io.Writer, name string) io.WriteCloser {
+	switch {
+	case strings.HasSuffix(name, ".gz"):
+		return gzip.NewWriter(w)
+	case strings.HasSuffix(name, ".zst"):
+		zw, err := zstd.NewWriter(w)
+		if err == nil {
+			return zw
+		}
+	}
+	return nil
+}
+
 // sqlTable names the table in -f sql output after the output file, or else
 // the input file: sales.csv.gz becomes sales.
 func sqlTable(o opts) string {
@@ -316,6 +338,9 @@ func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow
 	}
 	if f == pipeline.FormatXLSX {
 		return pipeline.ReadXLSX(ctx, r, o.sheet), closeFn, nil
+	}
+	if f == pipeline.FormatODS {
+		return pipeline.ReadODS(ctx, r, o.sheet), closeFn, nil
 	}
 	return pipeline.Read(ctx, r, f), closeFn, nil
 }

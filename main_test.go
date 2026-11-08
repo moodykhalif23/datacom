@@ -153,3 +153,15 @@ func TestSQLTableName(t *testing.T) {
 		t.Errorf("out name wins: got %q", got)
 	}
 }
+
+func TestCompressedOutput(t *testing.T) {
+	dir := t.TempDir()
+	for _, ext := range []string{".gz", ".zst"} {
+		out := filepath.Join(dir, "clean.csv"+ext)
+		runCLI(t, "clean", opts{in: "testdata/messy.csv", out: out, snake: true, limit: 2})
+		got := runCLI(t, "convert", opts{in: out, format: "csv"})
+		if !strings.HasPrefix(got, "invoice_no,customer_name,region,amount_kes,invoice_date,paid,email\n1001,") || strings.Count(got, "\n") != 3 {
+			t.Fatalf("%s round trip:\n%s", ext, got)
+		}
+	}
+}
