@@ -3,5 +3,8 @@
 !testdata/*.gz
 *.out
 .stress/
+.bench/
 /testdata/*.out
 dist/
+/*.csv
+.~lock.*#

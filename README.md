@@ -3,6 +3,9 @@
 <p align="center">A small, fast Go tool that turns large, messy data into clean, readable data.</p>
 
 - [Architecture diagrams and command flow](docs/architecture.md)
+- [What `clean` changes, with examples, and how to turn each change off](docs/normalization.md)
+- [Running it where the output has to be defended: verified installs, logs, reconciliation](docs/operations.md)
+- [Benchmarks against qsv, Miller, csvtk, DuckDB, csvkit and xsv, and how to reproduce them](docs/benchmarks.md)
 
 - **Streams everything.** Files larger than RAM are fine. Only `-sort` and the `table` / `md` views buffer rows; `-dedupe` keeps one 8-byte hash per distinct row.
 - **Reads** CSV, TSV, JSON arrays, NDJSON and Excel (`.xlsx`, one sheet at a time), plain or gzip, from a file, stdin or an http(s) URL. Format is auto-detected.
@@ -14,12 +17,23 @@
 
 ## Install
 
+**Binary, no Go needed.** Download the file for your platform and `SHA256SUMS` from the [releases page](https://github.com/moodykhalif23/datacom/releases), then:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing                          # must print OK
+chmod +x datacom-*-linux-amd64 && mv datacom-*-linux-amd64 ~/.local/bin/datacom
+gh attestation verify ~/.local/bin/datacom --owner moodykhalif23  # optional: proves GitHub built it from this repo
+```
+
+On Windows, download the `.exe`, rename it to `datacom.exe` and put it in a folder on your PATH. On macOS use the `darwin-arm64` file for Apple silicon.
+
+**From source.**
+
 ```sh
 go install github.com/moodykhalif23/datacom@latest
-export PATH="$PATH:$(go env GOPATH)/bin"   # where go install puts binaries
+export PATH="$PATH:$(go env GOPATH)/bin"   # go install puts binaries here and never adds it to PATH for you
 # or
 git clone https://github.com/moodykhalif23/datacom && cd datacom && go build -o datacom .
-go build -ldflags="-s -w" -o datacom .     # smaller binary: symbols stripped
 ```
 
 ## Usage

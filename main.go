@@ -132,10 +132,16 @@ func main() {
 		args = fs.Args()
 	}
 
-	// Ctrl-C or a closed pipe stops every stage cleanly.
+	// Ctrl-C or a closed pipe stops every stage cleanly. Ignoring SIGPIPE
+	// turns a reader that stops early (| head) into a write error, so the
+	// -monitor / -log report is still written instead of the process dying.
+	signal.Ignore(syscall.SIGPIPE)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, cmd, o); err != nil {
+		if errors.Is(err, syscall.EPIPE) {
+			return // the reader has gone; nothing is listening for a message
+		}
 		fmt.Fprintln(os.Stderr, "datacom:", err)
 		os.Exit(1)
 	}
@@ -163,7 +169,7 @@ func run(ctx context.Context, cmd string, o opts) error {
 		if o.monitor {
 			go mon.Live(os.Stderr, time.Second, isTerminal(os.Stderr), stop)
 		}
-		defer func() { close(stop); finish(mon, o) }()
+		defer func() { close(stop); finish(mon, o, start) }()
 	}
 
 	out := os.Stdout
@@ -366,9 +372,11 @@ func meter(mon *pipeline.Monitor, r io.Reader) io.Reader {
 	return mon.Meter(r)
 }
 
-// finish prints the monitor report and appends it to the JSON log.
-func finish(mon *pipeline.Monitor, o opts) {
+// finish prints the monitor report and appends it to the JSON log, stamped
+// with when it ran, which build ran it and the exact arguments.
+func finish(mon *pipeline.Monitor, o opts, start time.Time) {
 	rep := mon.Report()
+	rep.Time, rep.Version, rep.Command = start.Format(time.RFC3339), versionString(), os.Args[1:]
 	if o.monitor {
 		rep.WriteText(os.Stderr)
 	}

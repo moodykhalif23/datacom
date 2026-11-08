@@ -1,0 +1,36 @@
+# Pushing a tag such as v0.1.0-beta.2 builds the five platform binaries,
+# records signed build provenance, and publishes a GitHub release with
+# SHA256SUMS. Users verify with `sha256sum -c` and `gh attestation verify`.
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write     # create the release and upload its assets
+  id-token: write     # sign the provenance attestation with Sigstore
+  attestations: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: test
+        run: go test -race ./...
+      - name: known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: build
+        run: bash tools/release.sh "$GITHUB_REF_NAME"
+      - name: attest provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/datacom-*
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" --title "$GITHUB_REF_NAME" --generate-notes dist/*

@@ -37,6 +37,12 @@ func TestInferAndNormalize(t *testing.T) {
 		norm string
 	}{
 		{"1,250.00", KindFloat, "1250"},
+		{"6667.93", KindFloat, "6667.93"},
+		{"6667.90", KindFloat, "6667.9"},
+		{"-0.5", KindFloat, "-0.5"},
+		{"42", KindInt, "42"},
+		{"042", KindText, "042"},
+		{"1234567890123456", KindText, "1234567890123456"},
 		{"$3,400", KindInt, "3400"},
 		{"KES 3,400.50", KindFloat, "3400.5"},
 		{"1200 USD", KindInt, "1200"},
@@ -47,6 +53,9 @@ func TestInferAndNormalize(t *testing.T) {
 		{"0712 345 678", KindText, "0712 345 678"},
 		{"+5", KindInt, "5"},
 		{"15/02/2025", KindDate, "2025-02-15"},
+		{"2024-08-17", KindDate, "2024-08-17"},
+		{"2024-02-30", KindText, "2024-02-30"},
+		{"2024-13-01", KindText, "2024-13-01"},
 		{"2025-06-01T10:05:00Z", KindDate, "2025-06-01T10:05:00Z"},
 		{"Yes", KindBool, "true"},
 		{"N/A", KindEmpty, ""},
@@ -132,6 +141,22 @@ func TestFilterAggregateSort(t *testing.T) {
 	}
 	if got := strings.Join(collect(s), ";"); got != "A,2,30,15;B,1,5,5" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSortEmptyLast(t *testing.T) {
+	src := "k,v\na,5\nb,\nc,20\nd,x\ne,\n"
+	for key, want := range map[string]string{
+		"v":  "a,5;c,20;d,x;b,;e,",
+		"-v": "d,x;c,20;a,5;b,;e,",
+	} {
+		s, err := Sort(table(t, src), key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(collect(s), ";"); got != want {
+			t.Fatalf("sort %s: got %q want %q", key, got, want)
+		}
 	}
 }
 
