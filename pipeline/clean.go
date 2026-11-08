@@ -43,26 +43,24 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 	uniqueHeaders(hdr)
 	schema := &Schema{Columns: hdr, Kinds: make([]Kind, len(hdr))}
 	tallies := make([]tally, len(hdr))
-	out, em := in.child(hdr)
+	out, ch := in.child(hdr)
 
 	go func() {
-		defer em.close()
+		defer close(ch)
 		buf := make([]Row, 0, o.Sample)
 		// A live input must not stall waiting for a full sample.
 		var wait <-chan time.Time
 	sample:
 		for len(buf) < o.Sample {
 			select {
-			case batch, ok := <-in.Rows:
+			case r, ok := <-in.Rows:
 				if !ok {
 					break sample
 				}
-				for _, r := range batch {
-					buf = append(buf, r)
-					if o.Types {
-						for i := 0; i < len(hdr) && i < len(r); i++ {
-							tallies[i].add(Infer(r[i]))
-						}
+				buf = append(buf, r)
+				if o.Types {
+					for i := 0; i < len(hdr) && i < len(r); i++ {
+						tallies[i].add(Infer(r[i]))
 					}
 				}
 				if wait == nil {
@@ -143,18 +141,16 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 				}
 				seen[h] = struct{}{}
 			}
-			return em.send(r)
+			return out.send(ch, r)
 		}
 		for _, r := range buf {
 			if !emit(r) {
 				return
 			}
 		}
-		for batch := range in.Rows {
-			for _, r := range batch {
-				if !emit(r) {
-					return
-				}
+		for r := range in.Rows {
+			if !emit(r) {
+				return
 			}
 		}
 		if mon != nil {

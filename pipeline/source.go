@@ -26,6 +26,9 @@ const (
 	FormatNDJSON   Format = "ndjson"
 	FormatTable    Format = "table"
 	FormatMarkdown Format = "md"
+	FormatHTML     Format = "html"
+	FormatSQL      Format = "sql"
+	FormatZip      Format = "zip"
 )
 
 // FormatFromName guesses a format from a file name or URL path.
@@ -46,6 +49,12 @@ func FormatFromName(name string) (Format, bool) {
 		return FormatParquet, true
 	case ".md":
 		return FormatMarkdown, true
+	case ".html", ".htm":
+		return FormatHTML, true
+	case ".sql":
+		return FormatSQL, true
+	case ".zip":
+		return FormatZip, true
 	}
 	return "", false
 }
@@ -69,8 +78,20 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 		r, closeFn = f, f.Close
 	}
 	if f, ok := r.(*os.File); ok {
-		if rf := randomAccessFormat(src, f); rf != "" {
-			return f, rf, closeFn, nil // zip and parquet need the seekable file itself
+		rf := randomAccessFormat(src, f)
+		if rf == FormatZip {
+			entry, name, err := zipEntry(f)
+			if err != nil {
+				closeFn()
+				return nil, "", nil, err
+			}
+			fileClose := closeFn
+			r, src, closeFn = entry, name, func() error { entry.Close(); return fileClose() }
+			if fm, _ := FormatFromName(name); fm == FormatXLSX || fm == FormatParquet {
+				return r, fm, closeFn, nil // these spool the entry to a temporary file themselves
+			}
+		} else if rf != "" {
+			return f, rf, closeFn, nil // xlsx and parquet need the seekable file itself
 		}
 	}
 	br := bufio.NewReaderSize(r, 1<<20)
@@ -82,6 +103,10 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 		}
 		br = bufio.NewReaderSize(gz, 1<<20)
 	}
+	if bom, _ := br.Peek(2); len(bom) == 2 && (bom[0] == 0xff && bom[1] == 0xfe || bom[0] == 0xfe && bom[1] == 0xff) {
+		br.Discard(2)
+		br = bufio.NewReaderSize(newUTF16Reader(br, bom[0] == 0xfe), 1<<20)
+	}
 	f := hint
 	if f == "" || f == FormatAuto {
 		f = guessFormat(src, br)
@@ -90,7 +115,7 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 }
 
 func guessFormat(name string, br *bufio.Reader) Format {
-	if f, ok := FormatFromName(name); ok && f != FormatMarkdown {
+	if f, ok := FormatFromName(name); ok && f != FormatMarkdown && f != FormatHTML && f != FormatSQL && f != FormatZip {
 		return f
 	}
 	head, _ := br.Peek(4096)
@@ -112,47 +137,48 @@ func guessFormat(name string, br *bufio.Reader) Format {
 // Read streams rows from r. Cancelling ctx stops the pipeline; errors are
 // reported by Table.Err once the Rows channel closes.
 func Read(ctx context.Context, r io.Reader, f Format) *Table {
-	if _, ok := r.(*follower); ok {
-		ctx = WithLive(ctx) // a followed file never ends; rows must not wait in a batch
-	}
 	switch f {
-	case FormatCSV, FormatTSV:
-		return readCSV(ctx, r, f == FormatTSV)
-	case FormatNDJSON, FormatJSON:
+	case FormatCSV:
+		br, ok := r.(*bufio.Reader)
+		if !ok {
+			br = bufio.NewReader(r)
+		}
+		return readCSV(ctx, br, sniffDelimiter(br))
+	case FormatTSV:
+		return readCSV(ctx, r, '\t')
+	case FormatNDJSON, FormatJSON, "jsonl":
 		return readJSON(ctx, r, f == FormatJSON)
 	case FormatXLSX:
 		return ReadXLSX(ctx, r, "")
 	case FormatParquet:
 		return ReadParquet(ctx, r)
 	}
-	t, em := newRoot(ctx, nil)
+	t, ch := newRoot(ctx, nil)
 	t.fail(fmt.Errorf("unsupported input format %q", f))
-	em.close()
+	close(ch)
 	return t
 }
 
-func readCSV(ctx context.Context, r io.Reader, tsv bool) *Table {
+func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 	cr := csv.NewReader(r)
 	cr.FieldsPerRecord = -1
 	cr.LazyQuotes = true
 	cr.TrimLeadingSpace = true
-	if tsv {
-		cr.Comma = '\t'
-	}
+	cr.Comma = comma
 	hdr, err := cr.Read()
 	if len(hdr) > 0 {
 		hdr[0] = strings.TrimPrefix(hdr[0], "\uFEFF")
 	}
-	t, em := newRoot(ctx, hdr)
+	t, ch := newRoot(ctx, hdr)
 	if err != nil {
 		if err != io.EOF {
 			t.fail(fmt.Errorf("read header: %w", err))
 		}
-		em.close()
+		close(ch)
 		return t
 	}
 	go func() {
-		defer em.close()
+		defer close(ch)
 		for {
 			rec, err := cr.Read()
 			if err != nil {
@@ -161,7 +187,7 @@ func readCSV(ctx context.Context, r io.Reader, tsv bool) *Table {
 				}
 				return
 			}
-			if !em.send(rec) {
+			if !t.send(ch, rec) {
 				return
 			}
 		}
@@ -175,11 +201,11 @@ func readJSON(ctx context.Context, r io.Reader, array bool) *Table {
 		for {
 			tok, err := dec.Token()
 			if err != nil {
-				t, em := newRoot(ctx, nil)
+				t, ch := newRoot(ctx, nil)
 				if err != io.EOF {
 					t.fail(fmt.Errorf("json: no array found: %w", err))
 				}
-				em.close()
+				close(ch)
 				return t
 			}
 			if d, ok := tok.(json.Delim); ok && d == '[' {
@@ -193,19 +219,19 @@ func readJSON(ctx context.Context, r io.Reader, array bool) *Table {
 	if !array || dec.More() {
 		keys, first, err = firstObject(dec)
 	}
-	t, em := newRoot(ctx, keys)
+	t, ch := newRoot(ctx, keys)
 	if err != nil {
 		if err != io.EOF {
 			t.fail(fmt.Errorf("read first object: %w", err))
 		}
-		em.close()
+		close(ch)
 		return t
 	}
 	go func() {
-		defer em.close()
+		defer close(ch)
 		obj := first
 		for {
-			if !em.send(objToRow(obj, t.Header)) {
+			if !t.send(ch, objToRow(obj, t.Header)) {
 				return
 			}
 			if array && !dec.More() {
@@ -280,7 +306,7 @@ func scalar(v any) string {
 // randomAccessFormat recognises a workbook or Parquet file by extension or
 // by its signature; these formats cannot be streamed through a pipe.
 func randomAccessFormat(name string, f *os.File) Format {
-	if fm, _ := FormatFromName(name); fm == FormatXLSX || fm == FormatParquet {
+	if fm, _ := FormatFromName(name); fm == FormatXLSX || fm == FormatParquet || fm == FormatZip {
 		return fm
 	}
 	if f == os.Stdin {
@@ -289,8 +315,11 @@ func randomAccessFormat(name string, f *os.File) Format {
 	var magic [4]byte
 	if n, _ := f.ReadAt(magic[:], 0); n == 4 {
 		switch string(magic[:]) {
-		case "PK\x03\x04":
-			return FormatXLSX
+		case "PK\x03\x04": // an Excel workbook, or a zip archive with a data file inside
+			if isWorkbook(f) {
+				return FormatXLSX
+			}
+			return FormatZip
 		case "PAR1":
 			return FormatParquet
 		}

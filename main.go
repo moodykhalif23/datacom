@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -30,8 +31,9 @@ usage:
   datacom ui                                   point-and-click version in your browser
   datacom version                              build details for bug reports
 
-source is a file path, an http(s) URL, or stdin when omitted. All commands accept:
-  -f  output format: table (default on a terminal), csv, tsv, json, ndjson, md
+source is a file path, an http(s) URL, or stdin when omitted: CSV with any delimiter, TSV, JSON,
+NDJSON, Excel, Parquet, gzip or zip, UTF-8 or UTF-16. All commands accept:
+  -f  output format: table (default on a terminal), csv, tsv, json, ndjson, xlsx, parquet, html, sql, md
   -i  input format (default: auto-detect)      -sheet  Excel sheet name or number
   -o  write to file instead of stdout          -q      quiet: no row count on stderr
   -monitor  live progress on stderr and a report of every hiccup at the end
@@ -246,7 +248,12 @@ func run(ctx context.Context, cmd string, o opts) error {
 	if t, err = report(t, o); err != nil {
 		return err
 	}
-	n, err := pipeline.Write(out, t, outFmt)
+	var n int
+	if outFmt == pipeline.FormatSQL {
+		n, err = pipeline.WriteSQL(out, t, sqlTable(o))
+	} else {
+		n, err = pipeline.Write(out, t, outFmt)
+	}
 	if err != nil {
 		return err
 	}
@@ -257,6 +264,34 @@ func run(ctx context.Context, cmd string, o opts) error {
 		fmt.Fprintf(os.Stderr, "%d rows in %s\n", n, time.Since(start).Round(time.Millisecond))
 	}
 	return nil
+}
+
+// sqlTable names the table in -f sql output after the output file, or else
+// the input file: sales.csv.gz becomes sales.
+func sqlTable(o opts) string {
+	name := o.out
+	if name == "" {
+		name = o.in
+	}
+	name = strings.TrimSuffix(path.Base(strings.SplitN(strings.ReplaceAll(name, "\\", "/"), "?", 2)[0]), ".gz")
+	name = strings.TrimSuffix(name, path.Ext(name))
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case b.Len() > 0 && !strings.HasSuffix(b.String(), "_"):
+			b.WriteByte('_')
+		}
+	}
+	t := strings.Trim(b.String(), "_")
+	switch {
+	case t == "":
+		return "data"
+	case t[0] >= '0' && t[0] <= '9':
+		return "data_" + t
+	}
+	return t
 }
 
 // open reads a source into a raw table (a followed file for watch).
@@ -270,7 +305,6 @@ func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow
 		if f == "" {
 			f = pipeline.FormatNDJSON
 		}
-		ctx = pipeline.WithLive(ctx) // rows must not wait in a batch for more to arrive
 		return pipeline.Read(ctx, meter(mon, r), f), func() error { return nil }, nil
 	}
 	r, f, closeFn, err := pipeline.Open(ctx, src, pipeline.Format(o.inFormat))
