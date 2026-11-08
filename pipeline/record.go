@@ -40,11 +40,10 @@ type run struct {
 }
 
 // Stages hand rows on in batches so the channel is locked once per batch
-// rather than once per row. chanBuf batches may be in flight between two
-// stages, so about chanBuf*batchSize rows per stage boundary.
+// rather than once per row.
 const (
-	chanBuf   = 4
-	batchSize = 256
+	chanBuf   = 64
+	batchSize = 8
 )
 
 type liveKey struct{}
