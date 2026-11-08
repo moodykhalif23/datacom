@@ -11,8 +11,14 @@ type CleanOptions struct {
 	Dedupe       bool
 	DropEmpty    bool
 	Types        bool
-	Sample       int // rows used to infer column kinds (default 1000)
+	FoldCase     bool   // in categorical columns, spell a value the way it is spelled most often
+	PhonePrefix  string // country calling code for national phone numbers, e.g. "254"
+	Sample       int    // rows used to infer column kinds (default 1000)
 }
+
+// Fold tables stop growing at maxFoldKeys distinct values: past that a column
+// is not categorical and is left alone.
+const maxFoldKeys = 100
 
 type Schema struct {
 	Columns []string
@@ -67,6 +73,17 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 		for i := range schema.Kinds {
 			schema.Kinds[i] = tallies[i].kind()
 		}
+		var folds []map[string]string
+		var folded []int
+		var foldExample []string
+		if o.FoldCase {
+			folds, folded, foldExample = make([]map[string]string, len(hdr)), make([]int, len(hdr)), make([]string, len(hdr))
+			for i := range hdr {
+				if schema.Kinds[i] == KindText {
+					folds[i] = foldTable(buf, i)
+				}
+			}
+		}
 		var seen map[uint64]struct{}
 		if o.Dedupe {
 			seen = map[uint64]struct{}{}
@@ -89,8 +106,22 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 				}
 				raw := r[i]
 				var ok bool
-				if r[i], ok = normalize(raw, k); !ok && mon != nil {
+				if r[i], ok = normalizeWith(raw, k, o.PhonePrefix); !ok && mon != nil {
 					mon.Bad(hdr[i], k, raw)
+				}
+				if folds != nil && folds[i] != nil && r[i] != "" {
+					key := strings.ToLower(r[i])
+					if c, known := folds[i][key]; known {
+						if c != r[i] {
+							if folded[i] == 0 {
+								foldExample[i] = r[i] + " to " + c
+							}
+							r[i] = c
+							folded[i]++
+						}
+					} else if len(folds[i]) < maxFoldKeys*10 {
+						folds[i][key] = r[i]
+					}
 				}
 				empty = empty && r[i] == ""
 			}
@@ -122,8 +153,60 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 				return
 			}
 		}
+		if mon != nil {
+			for i, n := range folded {
+				if n > 0 {
+					mon.Note("%s: %s values respelled to match the most common form, e.g. %s.", hdr[i], commas(int64(n)), foldExample[i])
+				}
+			}
+		}
 	}()
 	return out, schema
+}
+
+// foldTable maps each distinct lower-cased value of column i in the sample to
+// its most common spelling (ties go to the spelling seen first), or nil when
+// the column has more than maxFoldKeys distinct values and so is not
+// categorical.
+func foldTable(sample []Row, i int) map[string]string {
+	type spellings struct {
+		count map[string]int
+		order []string // first-seen order, for ties
+	}
+	counts := map[string]*spellings{}
+	for _, r := range sample {
+		if i >= len(r) {
+			continue
+		}
+		v, _ := normalize(r[i], KindText)
+		if v == "" {
+			continue
+		}
+		key := strings.ToLower(v)
+		sp := counts[key]
+		if sp == nil {
+			if len(counts) >= maxFoldKeys {
+				return nil
+			}
+			sp = &spellings{count: map[string]int{}}
+			counts[key] = sp
+		}
+		if sp.count[v] == 0 {
+			sp.order = append(sp.order, v)
+		}
+		sp.count[v]++
+	}
+	table := make(map[string]string, len(counts))
+	for key, sp := range counts {
+		best, n := "", 0
+		for _, v := range sp.order {
+			if c := sp.count[v]; c > n {
+				best, n = v, c
+			}
+		}
+		table[key] = best
+	}
+	return table
 }
 
 // fit pads or trims r to n columns.

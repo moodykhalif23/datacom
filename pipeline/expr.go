@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Expr is a compiled expression over a row, used by -where and -derive.
+// Expr evaluates one compiled -where or -derive expression against a row.
 type Expr func(Row) value
 
 type value struct {

@@ -140,9 +140,8 @@ func (s *uiServer) index(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, page)
 }
 
-// upload streams one file from the browser into the working folder and
-// returns the path to use as a source. The original name is kept so the
-// format is still detected from it.
+// upload copies the browser's file into the working folder and returns its
+// path. The name is kept because format detection reads it.
 func (s *uiServer) upload(w http.ResponseWriter, r *http.Request) {
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -206,8 +205,8 @@ type sourceSpec struct {
 	Sheet  string `json:"sheet"`
 }
 
-// columns opens a source just far enough to read its header, as Clean would
-// name it, so the page can offer the columns in its menus.
+// columns reads only the header of a source, named as Clean would name it,
+// for the page's menus.
 func (s *uiServer) columns(w http.ResponseWriter, r *http.Request) {
 	var q struct {
 		sourceSpec
@@ -490,8 +489,8 @@ func downloadName(name, source, cmd, ext string) string {
 	return stem + ext
 }
 
-// readTail returns up to n bytes from the end of path, starting at a line
-// boundary when the file is longer than that.
+// readTail reads the last n bytes of path, cut at a line boundary when the
+// file is longer.
 func readTail(path string, n int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {

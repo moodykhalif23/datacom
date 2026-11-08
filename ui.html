@@ -105,7 +105,7 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
 <body>
 <header>
   <h1>datacom</h1>
-  <p class="lede">Turns a large, messy spreadsheet or data file into clean, readable data. Nothing leaves your computer: this page only talks to the datacom program running on it.</p>
+  <p class="lede">Cleans up big, messy spreadsheets and data files. Nothing leaves your computer. This page only talks to the datacom program running on it.</p>
 </header>
 
 <main>
@@ -193,7 +193,7 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
       <details>
         <summary>Rename columns</summary>
         <input type="text" id="rename" placeholder="Amount (KES) = amount, Customer Name = customer" spellcheck="false">
-        <p class="help">old name = new name, separated by commas.</p>
+        <p class="help">Current name = new name. Separate several with commas.</p>
       </details>
     </fieldset>
 
@@ -206,7 +206,7 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
 
     <fieldset>
       <legend>Totals by group</legend>
-      <p class="help">One row comes out per group, with the totals you ask for. With nothing ticked, one row for the whole file.</p>
+      <p class="help">You get one row per group with these totals. Tick nothing and you get a single row for the whole file.</p>
       <label>Group rows by</label>
       <div class="checks" id="groupPick"></div>
       <label>Totals</label>
@@ -228,7 +228,7 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
 
     <fieldset>
       <legend>Add columns from another file</legend>
-      <p class="help">Looks up each row's value in the other file and appends that file's columns, like VLOOKUP. Rows with no match get empty columns.</p>
+      <p class="help">Like VLOOKUP: for each row, find the matching row in the other file and add its columns. Rows with no match get empty columns.</p>
       <div class="inline">
         <label class="linkish" for="joinFile" style="margin:0;font-weight:400">Choose the other file</label><input type="file" id="joinFile" hidden>
         <span class="status">or</span>
@@ -259,7 +259,7 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
   <div class="panel" data-for="watch">
     <label for="every">Show a fresh summary every</label>
     <div class="inline"><input type="text" id="every" class="short" value="10s"><span class="help">for example 10s, 1m, 2m30s</span></div>
-    <p class="help">Watch needs a file path (step 1), not a copy, so it can see the file grow. It keeps going until you press Stop.</p>
+    <p class="help">Watch only works on a file path typed in step 1, because a copied file never grows. Press Stop to end it.</p>
   </div>
 </section>
 

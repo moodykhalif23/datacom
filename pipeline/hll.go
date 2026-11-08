@@ -40,8 +40,8 @@ func (h *hll) count() int64 {
 	return int64(est + 0.5)
 }
 
-// mix64 is the MurmurHash3 finalizer: it spreads entropy into the high
-// bits, which FNV leaves weak for short, similar strings.
+// mix64 is the MurmurHash3 finalizer. FNV leaves the high bits weak for
+// short, similar strings; this spreads entropy into them.
 func mix64(x uint64) uint64 {
 	x ^= x >> 33
 	x *= 0xff51afd7ed558ccd

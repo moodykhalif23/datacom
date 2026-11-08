@@ -2,6 +2,8 @@
 
 <p align="center">A small, fast Go tool that turns large, messy data into clean, readable data.</p>
 
+<p align="center"><img src="docs/demo.svg" alt="A messy CSV export going in; clean, typed rows and a report of every change coming out" width="800"></p>
+
 - [Architecture diagrams and command flow](docs/architecture.md)
 - [What `clean` changes, with examples, and how to turn each change off](docs/normalization.md)
 - [Running it where the output has to be defended: verified installs, logs, reconciliation](docs/operations.md)
@@ -63,7 +65,7 @@ The examples below use your own file names.
 ```sh
 datacom profile sales.csv.gz                 # what is in this file?
 datacom profile report.xlsx -sheet 2         # Excel, by sheet name or number
-datacom clean   raw.csv -snake -dedupe -o clean.csv
+datacom clean   raw.csv -snake -dedupe -fold-case -phone 254 -o clean.csv
 datacom clean   raw.csv -monitor -log runs.jsonl -o clean.csv   # live progress + hiccup report
 datacom query   sales.csv -where "amount > 1000" -group region \
                 -agg "count,sum(amount),avg(amount):avg" -sort -sum_amount

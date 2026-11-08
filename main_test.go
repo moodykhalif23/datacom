@@ -109,6 +109,16 @@ func TestBadInputsReturnErrors(t *testing.T) {
 	}
 }
 
+func TestPhoneAndFoldCaseFlags(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "in.csv")
+	os.WriteFile(src, []byte("Phone,Status\n0712 345 678,PAID\n+254 733 000 111,paid\n733000112,paid\n0700 000 000,Paid\n"), 0o644)
+	out := runCLI(t, "clean", opts{in: src, snake: true, foldCase: true, phone: "+254", format: "csv"})
+	want := "phone,status\n+254712345678,paid\n+254733000111,paid\n+254733000112,paid\n+254700000000,paid\n"
+	if out != want {
+		t.Fatalf("got %q", out)
+	}
+}
+
 // TestClosedPipeStillLogs checks that a run whose reader goes away (| head)
 // ends with EPIPE and still writes its -log line.
 func TestClosedPipeStillLogs(t *testing.T) {

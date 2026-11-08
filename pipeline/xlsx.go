@@ -173,7 +173,7 @@ func decodeXML(f *zip.File, v any) error {
 	return xml.NewDecoder(rc).Decode(v)
 }
 
-// stream sends each sheet row, including the header row, to out.
+// stream sends every sheet row, header included, to out.
 func (wb *workbook) stream(ctx context.Context, out chan<- Row) error {
 	rc, err := wb.sheet.Open()
 	if err != nil {

@@ -1,27 +1,33 @@
 # Datacom architecture
 
-Datacom is a Go command-line data tool. Its CLI coordinates file/network I/O and
-selects a command; the `pipeline` package reads, transforms, and writes tables.
-Rows normally flow through bounded channels, with one goroutine per stage.
+Datacom is a Go data tool with two front ends and one engine. The command line
+in `main.go` and the browser page served by `datacom ui` both build the same
+options struct and call the same `run` function; the `pipeline` package reads,
+transforms and writes tables. Rows flow through bounded channels, one goroutine
+per stage.
 
 ## System architecture
 
 ```mermaid
 flowchart LR
-    User["CLI user / shell"] --> CLI["main.go<br/>command, flags, context"]
+    User["Terminal user"] --> CLI["main.go<br/>flags → opts"]
+    Browser["Browser user"] --> Page["ui.html<br/>served by datacom ui"]
+    Page --> API["ui.go<br/>local HTTP server, token-guarded:<br/>upload, columns, jobs, download"]
+    CLI --> Run["run(ctx, command, opts)"]
+    API --> Run
 
     subgraph Sources["Input sources"]
-        File["Local file"]
+        File["Local file or upload copy"]
         Stdin["stdin"]
         URL["HTTP(S) URL"]
         Follow["Growing file / stdin<br/>watch mode"]
     end
-    CLI --> Open["open / pipeline.Open"]
+    Run --> Open["open / pipeline.Open"]
     File --> Open
     Stdin --> Open
     URL --> Remote["remote reader<br/>retry, resume, backoff"]
     Remote --> Open
-    CLI --> Follow
+    Run --> Follow
 
     Open --> Detect["format detection<br/>and gzip decoding"]
     Detect --> Decode["pipeline.Read"]
@@ -29,9 +35,9 @@ flowchart LR
     Decode --> Decoders["CSV / TSV<br/>JSON / NDJSON<br/>XLSX / Parquet"]
     Decoders --> Raw["Table: header + row channel"]
 
-    subgraph Processing["CLI-selected processing stages"]
+    subgraph Processing["Processing stages, added as requested"]
         Clean["Clean<br/>headers, types, empty rows, dedupe"]
-        Join["Left join<br/>right-side lookup held in memory"]
+        Join["Left join<br/>right side held in memory"]
         Derive["Derive columns"]
         Filter["Where filters"]
         Select["Select / rename columns"]
@@ -41,11 +47,11 @@ flowchart LR
     end
     Raw --> Clean --> Join --> Derive --> Filter --> Select
     Select --> Aggregate --> Sort --> Limit
-    Select -. optional stages skipped .-> Limit
+    Select -. stages not requested are skipped .-> Limit
 
-    Profile["profile: compute dataset summary"]
+    Profile["profile: dataset summary"]
     Windows["watch: split into time windows"]
-    WatchReport["Per-window group / aggregate<br/>→ sort → limit<br/>→ optional Trend"]
+    WatchReport["Per window: group / aggregate<br/>→ sort → limit → Trend"]
     Convert["convert: read → write"]
     Clean --> Profile
     Select --> Windows --> WatchReport
@@ -54,24 +60,26 @@ flowchart LR
     Limit --> Write["pipeline.Write"]
     WatchReport --> Write
     Convert --> Write
-    Write --> Dest["stdout or output file<br/>table / CSV / TSV / JSON / NDJSON /<br/>Markdown / XLSX / Parquet"]
+    Write --> Dest["stdout, output file, or a job file<br/>table / CSV / TSV / JSON / NDJSON /<br/>Markdown / XLSX / Parquet"]
     Profile --> ProfileOut["text or JSON report"]
-    ProfileOut --> ProfileDest["stdout or output file"]
+    ProfileOut --> Dest
+    Dest -. preview and download .-> API
 
-    subgraph Observability["Optional monitoring"]
-        Monitor["Monitor<br/>bytes, rows, data-quality findings,<br/>buffer notes, errors"]
-        Log["stderr progress / final report<br/>optional JSONL log"]
+    subgraph Observability["Monitoring"]
+        Monitor["Monitor<br/>bytes, rows, untyped values,<br/>buffer notes, errors"]
+        Log["stderr progress and report<br/>optional JSONL log"]
     end
-    CLI -. attaches to context .-> Monitor
+    Run -. attaches to context .-> Monitor
     Decode -. counts input .-> Monitor
-    Clean -. reports data-quality findings .-> Monitor
-    Join -. reports unmatched keys .-> Monitor
-    Aggregate -. reports large group counts .-> Monitor
-    Sort -. reports large buffers .-> Monitor
-    Write -. records output and error .-> Monitor
+    Clean -. untyped values, padded and dropped rows .-> Monitor
+    Join -. unmatched keys .-> Monitor
+    Aggregate -. large group counts .-> Monitor
+    Sort -. large buffers .-> Monitor
+    Write -. rows out, error .-> Monitor
     Monitor --> Log
+    Monitor -. polled for progress, final report .-> API
 
-    CLI -. cancellation / first error .-> Raw
+    Run -. cancellation / first error .-> Raw
     Raw -. shared context and error .-> Clean
     Clean -. shared context and error .-> Join
     Join -. shared context and error .-> Derive
@@ -82,11 +90,12 @@ flowchart LR
     Sort -. shared context and error .-> Limit
 ```
 
-Each pipeline stage passes rows over a bounded channel (512 rows) and shares
-the run's cancellation and first error. This bounds per-row memory for
-streaming stages; deduplication retains row hashes, joins retain the right
-input, grouping retains group state, and sorting buffers its input. XLSX and
-Parquet require random access; non-file inputs are spooled where needed.
+Each stage passes rows over a channel of 512 and shares the run's cancellation
+and first error, so memory per row stays flat however many stages are chained.
+Dedupe keeps one 8-byte hash per distinct row, join keeps the right-hand table,
+grouping keeps one accumulator per group, and sort keeps every row. XLSX and
+Parquet need random access, so a piped or uploaded input is spooled to a
+temporary file first.
 
 ## Command flow
 
@@ -95,10 +104,13 @@ flowchart TD
     Start([Start]) --> Args{Command?}
     Args -->|help / no command| Help["Print usage"]
     Args -->|version| Version["Print build details"]
+    Args -->|ui| Serve["Serve ui.html on localhost<br/>and open the browser"]
+    Serve --> Press["Each Run on the page:<br/>opts from the form, a job with its own context"]
+    Press --> Observe
     Args -->|profile, clean, query,<br/>convert, watch| Setup["Parse flags and source<br/>set cancellation context"]
     Args -->|other| Unknown["Return unknown-command error"]
 
-    Setup --> Observe{"Monitor or log<br/>enabled?"}
+    Setup --> Observe{"Monitor wanted?<br/>(-monitor, -log, or the page)"}
     Observe -->|yes| Attach[Attach monitor to context]
     Observe -->|no| Open
     Attach --> Open
@@ -133,7 +145,7 @@ flowchart TD
     WriteError -->|yes| Fail
     WriteError -->|no| RowCount["Print row count unless quiet"]
 
-    JSONReport --> Finish[Finish and emit monitor report / log]
+    JSONReport --> Finish["Finish: monitor report to stderr,<br/>JSONL log, or back to the page"]
     TextReport --> Finish
     ConvertDirect --> Finish
     WatchDone --> Finish
@@ -142,5 +154,30 @@ flowchart TD
 
 For `clean` and `query`, the report stages are only added when requested.
 `convert` bypasses cleaning and shaping; `profile` computes a dataset summary;
-`watch` follows its source and emits reports repeatedly until input ends or
-the run is cancelled.
+`watch` follows its source and emits reports until input ends or the run is
+cancelled.
+
+## Browser interface
+
+`datacom ui` binds a plain `net/http` server to 127.0.0.1 and serves one
+embedded page. The page never talks to anything else, and every API call
+carries a token minted at startup, so another tab cannot drive the server.
+
+- **Source.** A dropped or chosen file is streamed into a temporary folder,
+  keeping its name so format detection still works; a typed path or URL is
+  used as is. The page then asks for the header, cleaned the way the chosen
+  options would clean it, so filters, totals and sorting are built from the
+  file's real column names and translated into the same flags and expressions
+  the command line takes.
+- **Jobs.** Run posts the form as one request. The server builds an `opts`,
+  points its output at a file in the temporary folder, and calls `run` in a
+  goroutine under a cancellable context. The page polls the job: while it
+  runs, rows and bytes come from the attached Monitor (and the tail of the
+  output file for `watch`); when it finishes, the Monitor's report, a preview
+  and a download link come back. Stop cancels the context, which unwinds every
+  stage exactly as Ctrl-C does.
+- **Preview.** The output is read back through `pipeline.Read`, so an Excel or
+  Parquet result previews as faithfully as CSV. Profile and watch results are
+  text and are shown as written.
+- **Cleanup.** Ctrl-C in the terminal cancels every job, waits for their files
+  to close, and removes the temporary folder.

@@ -144,6 +144,9 @@ func Infer(s string) Kind {
 	case "true", "false", "yes", "no", "y", "n":
 		return KindBool
 	}
+	if isPhone(t) {
+		return KindPhone
+	}
 	if c := CleanNumber(t); c != "" {
 		if _, err := strconv.ParseInt(c, 10, 64); err == nil {
 			if isCode(c) {
@@ -184,11 +187,21 @@ func Normalize(s string, k Kind) string {
 }
 
 func normalize(s string, k Kind) (string, bool) {
+	return normalizeWith(s, k, "")
+}
+
+// normalizeWith is normalize with the country calling code used for
+// national phone numbers ("" leaves them national).
+func normalizeWith(s string, k Kind, country string) (string, bool) {
 	if IsNull(s) {
 		return "", true
 	}
 	t := strings.TrimSpace(s)
 	switch k {
+	case KindPhone:
+		if p, ok := NormalizePhone(t, country); ok {
+			return p, true
+		}
 	case KindInt, KindFloat:
 		if plainNumber(t, k) {
 			return t, true // already canonical
@@ -274,6 +287,63 @@ func isoDate(s string) (y, m, d int, ok bool) {
 	return y, m, d, true
 }
 
+// phoneDigits returns the digits of a phone number written with the usual
+// separators, and whether it was in international form (a + or 00 prefix).
+func phoneDigits(s string) (digits string, intl, ok bool) {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c >= '0' && c <= '9':
+			b.WriteByte(c)
+		case c == '+' && i == 0:
+			intl = true
+		case c == ' ' || c == '-' || c == '.' || c == '(' || c == ')':
+		default:
+			return "", false, false
+		}
+	}
+	d := b.String()
+	if !intl && strings.HasPrefix(d, "00") {
+		d, intl = d[2:], true
+	}
+	if len(d) < 7 || len(d) > 15 {
+		return "", false, false
+	}
+	return d, intl, true
+}
+
+// isPhone is the strict test used to infer a column's kind: an international
+// form, a national number with its trunk 0, or digit groups with separators.
+func isPhone(s string) bool {
+	d, intl, ok := phoneDigits(s)
+	if !ok || len(d) < 9 {
+		return false
+	}
+	return intl || d[0] == '0' && len(d) >= 10 || strings.ContainsAny(s, " -.()")
+}
+
+// NormalizePhone compacts a phone number: "+254 712 345 678" becomes
+// "+254712345678" and "0712-345-678" becomes "0712345678". With a country
+// calling code, national forms become international: "0712345678",
+// "712345678" and "254712345678" all become "+254712345678".
+func NormalizePhone(s, country string) (string, bool) {
+	d, intl, ok := phoneDigits(strings.TrimSpace(s))
+	if !ok {
+		return s, false
+	}
+	switch {
+	case intl:
+		return "+" + d, true
+	case country == "":
+		return d, true
+	case d[0] == '0':
+		return "+" + country + d[1:], true
+	case strings.HasPrefix(d, country) && len(d) >= len(country)+8:
+		return "+" + d, true
+	}
+	return "+" + country + d, true
+}
+
 func looksLikeDate(s string) bool {
 	digit, sep := false, false
 	for i := 0; i < len(s); i++ {
@@ -321,7 +391,7 @@ func stripCurrency(s string) string {
 // tally counts the kinds seen in a column sample; kind picks the column
 // type by majority so a few stray values do not turn a numeric column
 // into text. Those strays are what the monitor reports.
-type tally [6]int
+type tally [7]int
 
 func (t *tally) add(k Kind) { t[k]++ }
 
@@ -331,7 +401,7 @@ func (t *tally) kind() Kind {
 	for _, c := range []struct {
 		k Kind
 		n int
-	}{{KindDate, t[KindDate]}, {KindBool, t[KindBool]}, {KindInt, numeric}} {
+	}{{KindDate, t[KindDate]}, {KindBool, t[KindBool]}, {KindPhone, t[KindPhone]}, {KindInt, numeric}} {
 		if c.n > n {
 			best, n = c.k, c.n
 		}

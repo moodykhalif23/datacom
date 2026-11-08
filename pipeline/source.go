@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-// Format is an input or output encoding.
+// Format names an input or output encoding.
 type Format string
 
 const (
