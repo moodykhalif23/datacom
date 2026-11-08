@@ -37,6 +37,11 @@ func TestInferAndNormalize(t *testing.T) {
 		norm string
 	}{
 		{"1,250.00", KindFloat, "1250"},
+		{"1.250,00", KindFloat, "1250"},
+		{"3,50", KindFloat, "3.5"},
+		{"12,5%", KindFloat, "12.5"},
+		{"(1.250,00)", KindFloat, "-1250"},
+		{"1,250", KindInt, "1250"},
 		{"6667.93", KindFloat, "6667.93"},
 		{"6667.90", KindFloat, "6667.9"},
 		{"-0.5", KindFloat, "-0.5"},

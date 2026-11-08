@@ -3,6 +3,7 @@
 ## Unreleased
 
 - More input shapes: semicolon-, tab- and pipe-delimited files are detected from the first line; UTF-16 files (Excel's "Unicode Text" export) are decoded; a `.zip` is opened and the first data file inside it is read.
+- European numbers: `1.250,00`, `3,50` and `12,5%` are read as 1250, 3.5 and 12.5. A comma followed by one or two digits is a decimal comma; `1,250` is still one thousand two hundred and fifty.
 - Two output formats: `-f html` writes a table that opens in any browser, and `-f sql` writes `CREATE TABLE` typed from the first thousand rows plus `INSERT` statements of 500 rows, named after the output or input file. `jsonl` is accepted as another name for `ndjson`.
 - Phone numbers are a column type. `clean` compacts them (`+254 712 345 678` to `+254712345678`, `0712 345 678` to `0712345678`) and with `-phone 254` turns national forms into international ones. `profile` shows the column as `phone`.
 - `-fold-case` respells the values of categorical columns the way they are spelled most often, so `PAID`, `Paid` and `paid` become one value. `profile` now points at it when it sees inconsistent casing.
