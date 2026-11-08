@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// runCLI runs a command with the given options and returns the output file.
+// runCLI runs a command and returns the contents of its output file.
 func runCLI(t *testing.T, cmd string, o opts) string {
 	t.Helper()
 	if o.out == "" {
@@ -77,7 +77,7 @@ func TestWatchCommand(t *testing.T) {
 		f.WriteString("{\"s\":\"a\",\"n\":5}\n")
 		f.Close()
 		time.Sleep(600 * time.Millisecond)
-		cancel() // like Ctrl-C
+		cancel()
 	}()
 	err := run(ctx, "watch", opts{in: live, every: 400 * time.Millisecond, group: "s", agg: "count,sum(n)", sortKey: "s", out: out, quiet: true, format: "csv"})
 	if err != nil {
@@ -109,8 +109,8 @@ func TestBadInputsReturnErrors(t *testing.T) {
 	}
 }
 
-// TestClosedPipeStillLogs: when the reader goes away (| head), the run ends
-// with EPIPE and the -log line is still written.
+// TestClosedPipeStillLogs checks that a run whose reader goes away (| head)
+// ends with EPIPE and still writes its -log line.
 func TestClosedPipeStillLogs(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {

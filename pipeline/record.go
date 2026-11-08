@@ -55,8 +55,10 @@ func (t *Table) child(header []string) (*Table, chan Row) {
 }
 
 func (t *Table) send(ch chan<- Row, r Row) bool {
+	// Try without watching ctx first, so rows already read keep flowing
+	// after a stop and partial output is complete up to the error.
 	select {
-	case ch <- r: // rows already read keep flowing after a stop, so partial output is complete up to the error
+	case ch <- r:
 		if t.root && t.run.mon != nil {
 			t.run.mon.RowsIn.Add(1)
 		}
@@ -144,9 +146,9 @@ func Widen(a, b Kind) Kind {
 	return KindText
 }
 
-// hash64 folds s into a running FNV-1a hash; start with hashSeed.
-const hashSeed uint64 = 14695981039346656037
+const hashSeed uint64 = 14695981039346656037 // FNV-1a offset basis
 
+// hash64 folds s into the running FNV-1a hash h.
 func hash64(h uint64, s string) uint64 {
 	for i := 0; i < len(s); i++ {
 		h ^= uint64(s[i])

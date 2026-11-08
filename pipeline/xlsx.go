@@ -71,7 +71,7 @@ func forward(t *Table, ch chan Row, rows <-chan Row) *Table {
 type workbook struct {
 	sheet   *zip.File
 	strings []string
-	isDate  []bool // per cell style index
+	isDate  []bool // indexed by cell style
 }
 
 func loadWorkbook(zr *zip.Reader, sheet string) (*workbook, error) {

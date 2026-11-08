@@ -22,7 +22,7 @@ type remote struct {
 	done     bool
 }
 
-// Tunables, variables so tests can shorten them.
+// Retry and timeout settings, as variables so tests can shorten them.
 var (
 	remoteIdleTimeout = 30 * time.Second
 	remoteBackoff     = time.Second

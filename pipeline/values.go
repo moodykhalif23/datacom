@@ -114,7 +114,6 @@ func CleanNumber(s string) string {
 			b.WriteRune(r)
 		case r == ',', r == ' ', r == '_', r == '$', r == '%', r == '€', r == '£',
 			r == '¥', r == '₹', r == '\'':
-			// drop
 		default:
 			return ""
 		}
@@ -196,7 +195,7 @@ func normalize(s string, k Kind) (string, bool) {
 		}
 		c := CleanNumber(t)
 		if _, err := strconv.ParseInt(c, 10, 64); err == nil && isCode(c) {
-			break // a phone number or padded ID in a numeric column: keep it and report it
+			break // a phone or padded ID in a numeric column: keep it as is
 		}
 		if f, err := strconv.ParseFloat(c, 64); c != "" && err == nil {
 			if k == KindInt && f == float64(int64(f)) {

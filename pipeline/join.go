@@ -5,7 +5,8 @@ import (
 	"strings"
 )
 
-// Join appends the columns of right to every row of left whose key matches, ignoring case.
+// Join appends the columns of right to each row of left with a matching key.
+// Keys compare case-insensitively; unmatched rows get empty columns.
 func Join(left, right *Table, on string) (*Table, error) {
 	lk, rk, _ := strings.Cut(on, "=")
 	if rk == "" {

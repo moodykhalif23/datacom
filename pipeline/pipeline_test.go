@@ -86,8 +86,8 @@ func TestCleanDedupeAndSnake(t *testing.T) {
 	}
 }
 
-// A phone column is text and kept verbatim; a phone that strays into a numeric
-// column is kept too, rather than rounded into a different number.
+// TestCleanKeepsPhonesAndCodes checks that phone numbers stay verbatim, even
+// when one strays into a numeric column, instead of being rounded.
 func TestCleanKeepsPhonesAndCodes(t *testing.T) {
 	tb := table(t, "phone,amount\n+254712345678,10\n0712 345 678,0712345678\n254712345678,30\n")
 	out, schema := Clean(tb, CleanOptions{Types: true})
@@ -100,8 +100,8 @@ func TestCleanKeepsPhonesAndCodes(t *testing.T) {
 	}
 }
 
-// A capped duplicate scan reports how many rows it covered, in the struct,
-// the text report and the issues list.
+// TestProfileDuplicateCap checks that a capped duplicate scan reports how many
+// rows it covered in the struct, the text report and the issues list.
 func TestProfileDuplicateCap(t *testing.T) {
 	src := "id\n" + strings.Repeat("x\n", 30)
 	rep := Profile(table(t, src), nil, 5, 2) // cap: 2*10 = 20 rows checked

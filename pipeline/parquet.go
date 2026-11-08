@@ -17,8 +17,7 @@ import (
 )
 
 // FormatParquet is Apache Parquet, read and written through parquet-go,
-// the one dependency of this tool: every codec and encoding in the wild
-// is covered, which a home-grown reader could not promise.
+// the tool's one dependency.
 const FormatParquet Format = "parquet"
 
 // ReadParquet streams a file row group by row group. Nested fields are
