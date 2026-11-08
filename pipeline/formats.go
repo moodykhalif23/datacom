@@ -149,14 +149,18 @@ func writeHTML(w *bufio.Writer, t *Table) (int, error) {
 	w.WriteString("<!doctype html>\n<meta charset=\"utf-8\">\n<title>datacom</title>\n" +
 		"<style>table{border-collapse:collapse;font:14px system-ui,sans-serif}th,td{border:1px solid #ddd;padding:4px 8px;text-align:left;white-space:nowrap}th{background:#f3f3f3}</style>\n<table>\n<thead><tr>")
 	for _, h := range t.Header {
-		w.WriteString("<th>" + html.EscapeString(h) + "</th>")
+		w.WriteString("<th>")
+		w.WriteString(html.EscapeString(h))
+		w.WriteString("</th>")
 	}
 	w.WriteString("</tr></thead>\n<tbody>\n")
 	n := 0
 	for r := range t.Rows {
 		w.WriteString("<tr>")
 		for i := range t.Header {
-			w.WriteString("<td>" + html.EscapeString(r.Get(i)) + "</td>")
+			w.WriteString("<td>")
+			w.WriteString(html.EscapeString(r.Get(i)))
+			w.WriteString("</td>")
 		}
 		if _, err := w.WriteString("</tr>\n"); err != nil {
 			return n, err

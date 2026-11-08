@@ -260,7 +260,7 @@ func Sort(in *Table, key string) (*Table, error) {
 }
 
 // sortKey is a cell parsed once for sorting: numbers compare numerically,
-// text case-insensitively, as in compare.
+// text case-insensitively, and empty cells sort last.
 type sortKey struct {
 	num   float64
 	text  string
@@ -287,25 +287,6 @@ func (a sortKey) compare(b sortKey) int {
 		return cmpFloat(a.num, b.num)
 	}
 	return strings.Compare(a.text, b.text)
-}
-
-// compare orders two cell values: numbers numerically, text
-// case-insensitively, and empty values after everything else.
-func compare(a, b string) int {
-	switch {
-	case a == b:
-		return 0
-	case a == "":
-		return 1
-	case b == "":
-		return -1
-	}
-	if fa, ok := ParseFloat(a); ok {
-		if fb, ok := ParseFloat(b); ok {
-			return cmpFloat(fa, fb)
-		}
-	}
-	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
 }
 
 func cmpFloat(a, b float64) int {
