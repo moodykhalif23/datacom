@@ -13,6 +13,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // Format names an input or output encoding.
@@ -29,10 +31,12 @@ const (
 	FormatHTML     Format = "html"
 	FormatSQL      Format = "sql"
 	FormatZip      Format = "zip"
+	FormatXML      Format = "xml"
 )
 
 // FormatFromName guesses a format from a file name or URL path.
 func FormatFromName(name string) (Format, bool) {
+	name = strings.TrimSuffix(strings.TrimSuffix(name, ".gz"), ".zst")
 	name = strings.ToLower(strings.TrimSuffix(name, ".gz"))
 	switch path.Ext(name) {
 	case ".csv":
@@ -55,6 +59,12 @@ func FormatFromName(name string) (Format, bool) {
 		return FormatSQL, true
 	case ".zip":
 		return FormatZip, true
+	case ".xml":
+		return FormatXML, true
+	case ".ods":
+		return FormatODS, true
+	case ".avro":
+		return FormatAvro, true
 	}
 	return "", false
 }
@@ -87,7 +97,7 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 			}
 			fileClose := closeFn
 			r, src, closeFn = entry, name, func() error { entry.Close(); return fileClose() }
-			if fm, _ := FormatFromName(name); fm == FormatXLSX || fm == FormatParquet {
+			if fm, _ := FormatFromName(name); fm == FormatXLSX || fm == FormatParquet || fm == FormatODS {
 				return r, fm, closeFn, nil // these spool the entry to a temporary file themselves
 			}
 		} else if rf != "" {
@@ -95,13 +105,21 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 		}
 	}
 	br := bufio.NewReaderSize(r, 1<<20)
-	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+	magic, _ := br.Peek(2)
+	if len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
 		gz, err := gzip.NewReader(br)
 		if err != nil {
 			closeFn()
 			return nil, "", nil, err
 		}
 		br = bufio.NewReaderSize(gz, 1<<20)
+	} else if len(magic) == 2 && magic[0] == 0x28 && magic[1] == 0xb5 { // zstd
+		zr, err := zstd.NewReader(br)
+		if err != nil {
+			closeFn()
+			return nil, "", nil, err
+		}
+		br = bufio.NewReaderSize(zr, 1<<20)
 	}
 	if bom, _ := br.Peek(2); len(bom) == 2 && (bom[0] == 0xff && bom[1] == 0xfe || bom[0] == 0xfe && bom[1] == 0xff) {
 		br.Discard(2)
@@ -121,6 +139,10 @@ func guessFormat(name string, br *bufio.Reader) Format {
 	head, _ := br.Peek(4096)
 	t := bytes.TrimLeft(head, " \t\r\n\uFEFF")
 	switch {
+	case bytes.HasPrefix(head, avroMagic):
+		return FormatAvro
+	case len(t) > 0 && t[0] == '<':
+		return FormatXML
 	case len(t) > 0 && t[0] == '[':
 		return FormatJSON
 	case len(t) > 0 && t[0] == '{':
@@ -150,8 +172,14 @@ func Read(ctx context.Context, r io.Reader, f Format) *Table {
 		return readJSON(ctx, r, f == FormatJSON)
 	case FormatXLSX:
 		return ReadXLSX(ctx, r, "")
+	case FormatODS:
+		return ReadODS(ctx, r, "")
 	case FormatParquet:
 		return ReadParquet(ctx, r)
+	case FormatXML:
+		return ReadXML(ctx, r)
+	case FormatAvro:
+		return ReadAvro(ctx, r)
 	}
 	t, ch := newRoot(ctx, nil)
 	t.fail(fmt.Errorf("unsupported input format %q", f))
@@ -306,7 +334,7 @@ func scalar(v any) string {
 // randomAccessFormat recognises a workbook or Parquet file by extension or
 // by its signature; these formats cannot be streamed through a pipe.
 func randomAccessFormat(name string, f *os.File) Format {
-	if fm, _ := FormatFromName(name); fm == FormatXLSX || fm == FormatParquet || fm == FormatZip {
+	if fm, _ := FormatFromName(name); fm == FormatXLSX || fm == FormatParquet || fm == FormatZip || fm == FormatODS {
 		return fm
 	}
 	if f == os.Stdin {
@@ -315,11 +343,8 @@ func randomAccessFormat(name string, f *os.File) Format {
 	var magic [4]byte
 	if n, _ := f.ReadAt(magic[:], 0); n == 4 {
 		switch string(magic[:]) {
-		case "PK\x03\x04": // an Excel workbook, or a zip archive with a data file inside
-			if isWorkbook(f) {
-				return FormatXLSX
-			}
-			return FormatZip
+		case "PK\x03\x04": // a spreadsheet package, or a zip archive with a data file inside
+			return zipKind(f)
 		case "PAR1":
 			return FormatParquet
 		}

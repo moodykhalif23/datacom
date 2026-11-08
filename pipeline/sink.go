@@ -27,6 +27,12 @@ func Write(w io.Writer, t *Table, f Format) (int, error) {
 		n, err = writeTable(bw, t, f == FormatMarkdown)
 	case FormatHTML:
 		n, err = writeHTML(bw, t)
+	case FormatXML:
+		n, err = writeXML(bw, t)
+	case FormatODS:
+		n, err = writeODS(bw, t)
+	case FormatAvro:
+		n, err = writeAvro(bw, t)
 	case FormatSQL:
 		return WriteSQL(w, t, "data")
 	case FormatXLSX:

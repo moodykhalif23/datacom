@@ -10,8 +10,8 @@
 - [Benchmarks against qsv, Miller, csvtk, DuckDB, csvkit and xsv, and how to reproduce them](docs/benchmarks.md)
 
 - **Streams everything.** Files larger than RAM are fine. Only `-sort` and the `table` / `md` views buffer rows; `-dedupe` keeps one 8-byte hash per distinct row.
-- **Reads** CSV with any delimiter (comma, semicolon, tab, pipe), TSV, JSON arrays, NDJSON, Excel (`.xlsx`, one sheet at a time) and Parquet, plain, gzip or inside a zip, in UTF-8 or UTF-16, from a file, stdin or an http(s) URL. Format and delimiter are auto-detected.
-- **Writes** CSV, TSV, JSON, NDJSON, Excel, Parquet, an HTML table, SQL (`CREATE TABLE` plus `INSERT`s typed from the data), Markdown or an aligned terminal table.
+- **Reads** CSV with any delimiter (comma, semicolon, tab, pipe), TSV, JSON arrays, NDJSON, XML, Excel (`.xlsx`) and OpenDocument (`.ods`) spreadsheets one sheet at a time, Parquet and Avro; plain, gzip, zstd or inside a zip; UTF-8, UTF-16 or Latin-1 XML; from a file, stdin or an http(s) URL. Format and delimiter are auto-detected.
+- **Writes** CSV, TSV, JSON, NDJSON, XML, Excel, OpenDocument, Parquet, Avro, an HTML table, SQL (`CREATE TABLE` plus `INSERT`s typed from the data), Markdown or an aligned terminal table, gzip- or zstd-compressed when the output name ends in `.gz` or `.zst`.
 - **Survives bad networks.** A URL download that stalls or drops is retried with backoff and resumed from the last byte, so a slow or flaky connection still yields one correct stream.
 - **Cleans** headers, whitespace, `NULL` / `N/A` / `-` markers, numbers like `"1,250.00"`, `$3,400`, `KES 3400`, `(500)`, mixed date formats, `Yes/No/Y/N` booleans, duplicate and empty rows. Phone numbers and zero-padded IDs that look numeric are kept as text, never rounded or stripped.
 - **Answers questions** with filters, derived columns, joins, select, group-by, aggregates and sort, all driven by one small expression language.
