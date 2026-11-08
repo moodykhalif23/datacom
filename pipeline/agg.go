@@ -10,7 +10,7 @@ import (
 
 type AggSpec struct {
 	Func string // count, sum, avg, min, max, distinct, first, last
-	Col  int    // -1 for count(*)
+	Col  int    // -1 when counting rows
 	Name string
 }
 

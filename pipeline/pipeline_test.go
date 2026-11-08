@@ -49,8 +49,13 @@ func TestInferAndNormalize(t *testing.T) {
 		{"Room 101", KindText, "Room 101"},
 		{"(500)", KindInt, "-500"},
 		{"007", KindText, "007"},
-		{"+254712345678", KindText, "+254712345678"},
-		{"0712 345 678", KindText, "0712 345 678"},
+		{"+254712345678", KindPhone, "+254712345678"},
+		{"0712 345 678", KindPhone, "0712345678"},
+		{"254 728 137 074", KindPhone, "254728137074"},
+		{"(020) 221-4000", KindPhone, "0202214000"},
+		{"00254712345678", KindPhone, "+254712345678"},
+		{"712345678", KindInt, "712345678"},
+		{"1 250", KindInt, "1250"},
 		{"+5", KindInt, "5"},
 		{"15/02/2025", KindDate, "2025-02-15"},
 		{"2024-08-17", KindDate, "2024-08-17"},
@@ -86,16 +91,16 @@ func TestCleanDedupeAndSnake(t *testing.T) {
 	}
 }
 
-// TestCleanKeepsPhonesAndCodes checks that phone numbers stay verbatim, even
-// when one strays into a numeric column, instead of being rounded.
+// TestCleanKeepsPhonesAndCodes checks that phone numbers are compacted, not
+// rounded, and that one straying into a numeric column is kept as written.
 func TestCleanKeepsPhonesAndCodes(t *testing.T) {
 	tb := table(t, "phone,amount\n+254712345678,10\n0712 345 678,0712345678\n254712345678,30\n")
 	out, schema := Clean(tb, CleanOptions{Types: true})
 	rows := collect(out)
-	if schema.Kinds[0] != KindText || schema.Kinds[1] != KindInt {
+	if schema.Kinds[0] != KindPhone || schema.Kinds[1] != KindInt {
 		t.Fatalf("kinds = %v", schema.Kinds)
 	}
-	if got := strings.Join(rows, ";"); got != "+254712345678,10;0712 345 678,0712345678;254712345678,30" {
+	if got := strings.Join(rows, ";"); got != "+254712345678,10;0712345678,0712345678;254712345678,30" {
 		t.Fatalf("rows = %q", got)
 	}
 }
@@ -141,6 +146,31 @@ func TestFilterAggregateSort(t *testing.T) {
 	}
 	if got := strings.Join(collect(s), ";"); got != "A,2,30,15;B,1,5,5" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestPhonePrefixAndFoldCase(t *testing.T) {
+	for in, want := range map[string]string{
+		"0712 345 678": "+254712345678", "712345678": "+254712345678", "254712345678": "+254712345678",
+		"+254 712 345 678": "+254712345678", "0044 20 7946 0000": "+442079460000", "call me": "call me",
+	} {
+		got := in
+		if p, ok := NormalizePhone(in, "254"); ok {
+			got = p
+		}
+		if got != want {
+			t.Errorf("phone %q = %q, want %q", in, got, want)
+		}
+	}
+	src := "phone,status,name\n0712345678,paid,Ann\n+254 722 000 111,PAID,ann\n722000111,Paid,ANN\n0733000222,pending,Bob\n,paid,\n"
+	out, schema := Clean(table(t, src), CleanOptions{Types: true, FoldCase: true, PhonePrefix: "254", DropEmpty: true})
+	rows := collect(out)
+	if schema.Kinds[0] != KindPhone || schema.Kinds[1] != KindText {
+		t.Fatalf("kinds %v", schema.Kinds)
+	}
+	want := []string{"+254712345678,paid,Ann", "+254722000111,paid,Ann", "+254722000111,paid,Ann", "+254733000222,pending,Bob", ",paid,"}
+	if strings.Join(rows, ";") != strings.Join(want, ";") {
+		t.Fatalf("got %q", rows)
 	}
 }
 

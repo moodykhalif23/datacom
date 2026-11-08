@@ -126,11 +126,12 @@ const (
 	KindFloat
 	KindBool
 	KindDate
+	KindPhone
 	KindText
 )
 
 func (k Kind) String() string {
-	return [...]string{"empty", "int", "float", "bool", "date", "text"}[k]
+	return [...]string{"empty", "int", "float", "bool", "date", "phone", "text"}[k]
 }
 
 // Widen returns the narrowest kind that holds both a and b.

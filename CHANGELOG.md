@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Phone numbers are a column type. `clean` compacts them (`+254 712 345 678` to `+254712345678`, `0712 345 678` to `0712345678`) and with `-phone 254` turns national forms into international ones. `profile` shows the column as `phone`.
+- `-fold-case` respells the values of categorical columns the way they are spelled most often, so `PAID`, `Paid` and `paid` become one value. `profile` now points at it when it sees inconsistent casing.
 - `datacom ui` opens a browser interface for people who do not use a terminal: drop a file in, choose Summarize, Clean, Pick-filter-total, Convert or Watch, set options built from the file's own columns, and download the result. It is served by the same binary from the standard library, runs offline on Windows, macOS and Linux, and drives the same `run` path as the command line.
 - Faster: `-sort` parses each key once instead of on every comparison, and plain `YYYY-MM-DD` dates skip the layout search in type normalization. `clean` on 1M messy rows went from 5.8 s to 2.6 s on the benchmark machine; canonical numbers and null checks take fast paths too.
 - `tools/bench.sh` benchmarks datacom against Miller, csvtk, qsv, xsv, DuckDB and csvkit on the same generated data; `docs/benchmarks.md` has the results and how to reproduce them.

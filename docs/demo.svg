@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="786" height="590" viewBox="0 0 786 590" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">
+<rect width="100%" height="100%" rx="10" fill="#1e1e2e"/>
+<circle cx="22" cy="20" r="6" fill="#f38ba8"/><circle cx="42" cy="20" r="6" fill="#f9e2af"/><circle cx="62" cy="20" r="6" fill="#a6e3a1"/>
+<text x="393.0" y="25" text-anchor="middle" fill="#7f849c" font-size="12">datacom: a messy export in, clean data and a report out</text>
+<text x="24" y="82" fill="#a6e3a1" font-weight="bold" xml:space="preserve">$ head -5 export.csv</text>
+<text x="24" y="104" fill="#f9e2af" xml:space="preserve">Invoice No,Customer Name ,Region,Amount (KES),Invoice Date,Paid?,Email</text>
+<text x="24" y="126" fill="#cdd6f4" xml:space="preserve">1001,Acme Ltd,Nairobi,&quot;1,250.00&quot;,2025-01-15,Yes,ops@acme.co.ke</text>
+<text x="24" y="148" fill="#cdd6f4" xml:space="preserve">1002, Kenya Power ,nairobi,&quot;$3,400&quot;,15/02/2025,no,billing@kplc.go.ke</text>
+<text x="24" y="170" fill="#cdd6f4" xml:space="preserve">1003,Safaricom PLC,Mombasa,&quot;(500)&quot;,2025-03-01,TRUE,</text>
+<text x="24" y="192" fill="#cdd6f4" xml:space="preserve">1004,N/A,Kisumu,NULL,2025-03-05,,fin@county.go.ke</text>
+<text x="24" y="214" fill="#cdd6f4" xml:space="preserve">1001,Acme Ltd,Nairobi,&quot;1,250.00&quot;,2025-01-15,Yes,ops@acme.co.ke</text>
+<text x="24" y="258" fill="#a6e3a1" font-weight="bold" xml:space="preserve">$ datacom clean export.csv -snake -dedupe -fold-case -phone 254 -monitor</text>
+<text x="24" y="280" fill="#89b4fa" xml:space="preserve">invoice_no  customer_name  region   amount_kes  invoice_date  paid   email             </text>
+<text x="24" y="302" fill="#7f849c" xml:space="preserve">──────────  ─────────────  ───────  ──────────  ────────────  ─────  ──────────────────</text>
+<text x="24" y="324" fill="#cdd6f4" xml:space="preserve">      1001  Acme Ltd       Nairobi        1250  2025-01-15    true   ops@acme.co.ke    </text>
+<text x="24" y="346" fill="#cdd6f4" xml:space="preserve">      1002  Kenya Power    Nairobi        3400  2025-02-15    false  billing@kplc.go.ke</text>
+<text x="24" y="368" fill="#cdd6f4" xml:space="preserve">      1003  Safaricom PLC  Mombasa        -500  2025-03-01    true                     </text>
+<text x="24" y="390" fill="#cdd6f4" xml:space="preserve">      1004                 Kisumu               2025-03-05           fin@county.go.ke  </text>
+<text x="24" y="412" fill="#cdd6f4" xml:space="preserve">      1005  Tullow Oil     Nairobi       12000  2025-04-20    false  tx@tullow.com     </text>
+<text x="24" y="434" fill="#cdd6f4" xml:space="preserve">      1006  Kenya Airways  Mombasa        8750  2025-04-22    true   fin@kq.com        </text>
+<text x="24" y="456" fill="#cdd6f4" xml:space="preserve">      1007  KRA            Nairobi          99  2025-05-02    true   tax@kra.go.ke     </text>
+<text x="24" y="500" fill="#f9e2af" xml:space="preserve">monitor: 9 rows in, 7 out, 0 MB read in 0.0s (9,000 rows/s), peak memory 12 MB</text>
+<text x="24" y="522" fill="#7f849c" xml:space="preserve">  1 empty rows dropped (11.11%).</text>
+<text x="24" y="544" fill="#7f849c" xml:space="preserve">  1 duplicate rows dropped (11.11%).</text>
+<text x="24" y="566" fill="#7f849c" xml:space="preserve">  region: 1 values respelled to match the most common form, e.g. nairobi to Nairobi.</text>
+</svg>

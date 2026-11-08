@@ -95,6 +95,36 @@ A column where most values are `true`/`false`, `yes`/`no` or `y`/`n` (any
 case) is boolean, and `1`/`0` in that column also become `true`/`false`.
 A column of only `1` and `0` is an integer column and stays `1` and `0`.
 
+## Phone numbers
+
+A column where most values look like phone numbers is a phone column: an
+international form (`+254 712 345 678`, `00254712345678`), a national number
+with its leading 0 (`0712 345 678`), or digit groups with spaces, dashes,
+dots or brackets (`(020) 221-4000`). Separators are removed, so
+`+254 712 345 678` becomes `+254712345678` and `0712 345 678` becomes
+`0712345678`. International forms always get their `+`.
+
+With `-phone 254` (any country calling code), national forms become
+international too: `0712345678`, `712345678` and `254712345678` all become
+`+254712345678`. Without it they stay national, because the country is not
+knowable from the data.
+
+A plain 9-digit number without separators is an integer, not a phone, so a
+column of IDs is not mistaken for one. In a phone column it is still read as
+a phone. Anything in a phone column that is not a phone number (`call me`)
+is kept as written and counted by `-monitor`.
+
+## Casing
+
+Nothing is re-cased by default: `Nairobi` and `NAIROBI` stay different
+values, and `profile` warns when it sees that. `-fold-case` fixes it for
+categorical columns: any text column with at most 100 distinct values in the
+first 1000 rows. Each value is respelled the way it is spelled most often in
+those rows, so `PAID`, `Paid` and `paid` all become `paid` when `paid` is the
+common form, and `nairobi` becomes `Nairobi`. Columns with more distinct
+values, such as names or e-mail addresses, are left alone. `-monitor`
+reports how many values were respelled in each column.
+
 ## Rows
 
 - Rows that are empty after cleaning are dropped and counted. `-keep-empty`
@@ -116,6 +146,8 @@ A column of only `1` and `0` is an integer column and stays `1` and `0`.
 | snake_case headers | leave out `-snake` |
 | dropping empty rows | `-keep-empty` |
 | dropping duplicates | leave out `-dedupe` |
+| international phone numbers | leave out `-phone` |
+| respelling categorical values | leave out `-fold-case` |
 | any cleaning at all | use `convert` |
 
 Missing-value markers, header trimming and whitespace collapsing cannot be

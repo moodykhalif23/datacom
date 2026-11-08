@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// ColumnStats is the profile of one column.
+// ColumnStats holds the profile of one column.
 type ColumnStats struct {
 	Name     string       `json:"name"`
 	Kind     string       `json:"kind"`
@@ -184,7 +184,7 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 			}
 			for k, n := range keys {
 				if n > 1 {
-					rep.Issues = append(rep.Issues, fmt.Sprintf("%s: inconsistent casing for %q (fold it with -derive \"%s = lower(%s)\")", c.Name, k, c.Name, ident(c.Name)))
+					rep.Issues = append(rep.Issues, fmt.Sprintf("%s: inconsistent casing for %q (clean -fold-case picks the most common spelling)", c.Name, k))
 				}
 			}
 		}

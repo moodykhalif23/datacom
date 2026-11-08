@@ -207,7 +207,7 @@ func (r RunReport) WriteText(w io.Writer) {
 	}
 }
 
-// WriteJSON appends the report as one JSON line, for collecting runs.
+// WriteJSON appends the report as one JSON line so runs can be collected.
 func (r RunReport) WriteJSON(w io.Writer) error {
 	return json.NewEncoder(w).Encode(r)
 }

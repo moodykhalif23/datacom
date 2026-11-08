@@ -158,6 +158,20 @@ TOOLS="datacom qsv" tools/bench.sh  # a subset
 REPS=5 tools/bench.sh               # more repetitions
 ```
 
-Put the other tools' binaries on PATH or in `.bench/tools/`. Results append to
-`.bench/results.tsv` with one line per tool and operation: median and best wall
-time, CPU time, peak RSS, exit code and the first line of stderr on failure.
+Put the other tools' binaries on PATH or in `.bench/tools/`. The Go tools come
+from `go install`; the release binaries can be dropped straight into `.bench/tools/`:
+
+```sh
+mkdir -p .bench/tools && cd .bench/tools
+curl -sSLO https://github.com/dathere/qsv/releases/download/28.0.0/qsv-28.0.0-x86_64-unknown-linux-gnu.zip && unzip -o qsv-*.zip qsv && rm qsv-*.zip
+curl -sSL https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb-cli-linux-amd64.tar.gz | tar -xz duckdb
+curl -sSL https://github.com/BurntSushi/xsv/releases/download/0.13.0/xsv-0.13.0-x86_64-unknown-linux-musl.tar.gz | tar -xz xsv
+go install github.com/johnkerl/miller/v6/cmd/mlr@latest && go install github.com/shenwei356/csvtk/csvtk@latest
+```
+
+Not on Linux x86_64? Pick the matching archive from each project's releases
+page instead.
+
+Results append to `.bench/results.tsv` with one line per tool and operation:
+median and best wall time, CPU time, peak RSS, exit code and the first line of
+stderr on failure.

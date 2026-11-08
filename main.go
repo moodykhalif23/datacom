@@ -40,6 +40,8 @@ source is a file path, an http(s) URL, or stdin when omitted. All commands accep
 clean / query / watch flags:
   -snake        snake_case headers           -no-types   skip type normalization
   -dedupe       drop duplicate rows          -keep-empty keep all-empty rows
+  -fold-case    spell each value of a categorical column the way it is spelled most often (PAID, Paid -> paid)
+  -phone 254    country calling code for national phone numbers (0712 345 678 -> +254712345678)
   -join FILE    left join another file       -on KEY     join key, or "left=right"
   -derive "name = EXPR"   add or overwrite a column; repeatable, e.g. "margin = revenue - cost",
                 "band = if(amount > 1000, high, low)", "yr = year(date)", "status = lower(status)"
@@ -68,7 +70,8 @@ type opts struct {
 	logFile                          string
 	monitor                          bool
 	quiet, snake, dedupe             bool
-	noTypes, keepEmpty               bool
+	noTypes, keepEmpty, foldCase     bool
+	phone                            string
 	selectCols, group, agg, sortKey  string
 	join, on                         string
 	limit, top                       int
@@ -76,8 +79,8 @@ type opts struct {
 	every                            time.Duration
 	where, derive                    multi
 
-	// Set by the browser UI, which polls the monitor for progress and
-	// shows the final report instead of printing it.
+	// Used by the browser UI: it polls mon for progress and gets the report
+	// through onReport rather than on stderr.
 	mon      *pipeline.Monitor
 	onReport func(pipeline.RunReport)
 }
@@ -123,6 +126,8 @@ func main() {
 	fs.BoolVar(&o.dedupe, "dedupe", false, "")
 	fs.BoolVar(&o.noTypes, "no-types", false, "")
 	fs.BoolVar(&o.keepEmpty, "keep-empty", false, "")
+	fs.BoolVar(&o.foldCase, "fold-case", false, "")
+	fs.StringVar(&o.phone, "phone", "", "")
 	fs.StringVar(&o.join, "join", "", "")
 	fs.StringVar(&o.on, "on", "", "")
 	fs.Var(&o.derive, "derive", "")
@@ -283,7 +288,8 @@ func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow
 // shape applies the streaming stages: clean, join, derive, where, select.
 // The returned func releases the joined file once the pipeline is done.
 func shape(ctx context.Context, t *pipeline.Table, o opts) (*pipeline.Table, func() error, error) {
-	clean := pipeline.CleanOptions{SnakeHeaders: o.snake, Dedupe: o.dedupe, DropEmpty: !o.keepEmpty, Types: !o.noTypes}
+	clean := pipeline.CleanOptions{SnakeHeaders: o.snake, Dedupe: o.dedupe, DropEmpty: !o.keepEmpty, Types: !o.noTypes,
+		FoldCase: o.foldCase, PhonePrefix: strings.TrimLeft(o.phone, "+")}
 	t, _ = pipeline.Clean(t, clean)
 	done := func() error { return nil }
 	if o.join != "" {
