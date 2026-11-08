@@ -13,6 +13,7 @@
 - **Cleans** headers, whitespace, `NULL` / `N/A` / `-` markers, numbers like `"1,250.00"`, `$3,400`, `KES 3400`, `(500)`, mixed date formats, `Yes/No/Y/N` booleans, duplicate and empty rows. Phone numbers and zero-padded IDs that look numeric are kept as text, never rounded or stripped.
 - **Answers questions** with filters, derived columns, joins, select, group-by, aggregates and sort, all driven by one small expression language.
 - **Watches live data.** `watch` follows a growing file or stream and prints a fresh report every window, so you can see trends as they happen.
+- **Has a point-and-click version.** `datacom ui` opens the same five actions as plain forms in your browser, for colleagues who do not use a terminal.
 - **Profiles** any dataset in one readable report: types, missing values, distinct counts, min / max / mean, top values, and data-quality issues. The duplicate count covers the first million rows and says so when the file is longer; `clean -dedupe` counts them all.
 
 ## Install
@@ -35,6 +36,18 @@ export PATH="$PATH:$(go env GOPATH)/bin"   # go install puts binaries here and n
 # or
 git clone https://github.com/moodykhalif23/datacom && cd datacom && go build -o datacom .
 ```
+
+## Point-and-click
+
+Not everyone wants a terminal. The same binary has a browser interface for them:
+
+```sh
+datacom ui
+```
+
+It opens a page at `http://127.0.0.1:7878` with the five actions as plain forms: drop a file in (or type its path, or a URL), pick **Summarize**, **Clean**, **Pick, filter and total**, **Convert** or **Watch**, set the options with a sentence of explanation beside each, and press Run. Filters, totals and sorting are built from menus of the file's actual columns, so nobody has to learn the expression language, though a box for typing conditions by hand is there for those who do. The result comes back as a plain-language report of what happened, a preview of the first rows, and a Download button.
+
+Everything runs locally through the same code path as the command line, so results match exactly. The page works offline, on Windows, macOS and Linux, and in light or dark mode. `-addr host:port` chooses the address, `-no-open` skips launching the browser. Ctrl-C in the terminal stops it and removes any copied files.
 
 ## Usage
 

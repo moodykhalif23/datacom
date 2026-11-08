@@ -27,6 +27,7 @@ usage:
   datacom query   [source] [flags]             select, filter, derive, join, group, sort
   datacom convert [source] -f json|csv|...     change format
   datacom watch   [source] -every 10s [flags]  follow a growing file; report per window
+  datacom ui                                   point-and-click version in your browser
   datacom version                              build details for bug reports
 
 source is a file path, an http(s) URL, or stdin when omitted. All commands accept:
@@ -74,6 +75,11 @@ type opts struct {
 	jsonReport                       bool
 	every                            time.Duration
 	where, derive                    multi
+
+	// Set by the browser UI, which polls the monitor for progress and
+	// shows the final report instead of printing it.
+	mon      *pipeline.Monitor
+	onReport func(pipeline.RunReport)
 }
 
 type multi []string
@@ -89,6 +95,20 @@ func main() {
 	cmd := os.Args[1]
 	if cmd == "version" {
 		fmt.Println(versionString())
+		return
+	}
+	if cmd == "ui" {
+		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
+		fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+		addr := fs.String("addr", "127.0.0.1:"+uiPort, "")
+		noOpen := fs.Bool("no-open", false, "")
+		fs.Parse(os.Args[2:])
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := serveUI(ctx, *addr, !*noOpen); err != nil {
+			fmt.Fprintln(os.Stderr, "datacom:", err)
+			os.Exit(1)
+		}
 		return
 	}
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
@@ -152,9 +172,11 @@ func run(ctx context.Context, cmd string, o opts) error {
 		return fmt.Errorf("unknown command %q (try: profile, clean, query, convert, watch)", cmd)
 	}
 	start := time.Now()
-	var mon *pipeline.Monitor
-	if o.monitor || o.logFile != "" {
+	mon := o.mon
+	if mon == nil && (o.monitor || o.logFile != "") {
 		mon = pipeline.NewMonitor()
+	}
+	if mon != nil {
 		ctx = pipeline.WithMonitor(ctx, mon)
 	}
 	t, closeIn, err := open(ctx, o, mon, o.in, cmd == "watch")
@@ -376,6 +398,9 @@ func meter(mon *pipeline.Monitor, r io.Reader) io.Reader {
 func finish(mon *pipeline.Monitor, o opts, start time.Time) {
 	rep := mon.Report()
 	rep.Time, rep.Version, rep.Command = start.Format(time.RFC3339), versionString(), os.Args[1:]
+	if o.onReport != nil {
+		o.onReport(rep)
+	}
 	if o.monitor {
 		rep.WriteText(os.Stderr)
 	}
