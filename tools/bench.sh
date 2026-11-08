@@ -65,12 +65,12 @@ MLR_CLEAN='
   map o = {};
   for (k, v in $*) {
     nk = tolower(gsub(gsub(k, "[^A-Za-z0-9]+", "_"), "^_|_$", ""));
-    if (is_string(v) && v =~ "^(null|n/a|none|-)$"i) { v = "" }
+    if (is_string(v) && v =~ "^(null|n/a|nan|none|-+|[?])$"i) { v = "" }
     o[nk] = v;
   }
   $* = o;
   if (is_not_empty($amount_kes)) {
-    a = gsub($amount_kes, "[^0-9.()-]", "");
+    a = gsub(string($amount_kes), "[^0-9.()-]", "");
     if (a =~ "^\((.*)\)$") { a = "-" . "\1" }
     $amount_kes = float(a);
   }
@@ -82,9 +82,9 @@ MLR_CLEAN='
   }'
 run miller  clean-messy mlr --icsv --ocsv clean-whitespace then put "$MLR_CLEAN" then skip-trivial-records then uniq -a "$MESSY"
 # csvtk: one process per change, values stay text, headers are not lower-cased.
-run csvtk   clean-messy bash -c "csvtk replace -F -f '*' -p '^\s+|\s+\$' -r '' '$MESSY' | csvtk replace -F -f '*' -p '\s+' -r ' ' | csvtk replace -F -f '*' -i -p '^(NULL|n/a|none|-)\$' -r '' | csvtk replace -f 'Amount (KES)' -i -p '^(KES|Ksh)\s*|,' -r '' | csvtk replace -f 'Amount (KES)' -p '^\((.+)\)\$' -r '-\$1' | csvtk fmtdate -f 'Txn Date' --format 'YYYY-MM-DD' -k | csvtk rename2 -F -f '*' -p '[^A-Za-z0-9]+' -r '_' | csvtk uniq -E -F -f '*'"
+run csvtk   clean-messy bash -c "csvtk replace -F -f '*' -p '^\s+|\s+\$' -r '' '$MESSY' | csvtk replace -F -f '*' -p '\s+' -r ' ' | csvtk replace -F -f '*' -i -p '^(NULL|n/a|NaN|none|-+|[?])\$' -r '' | csvtk replace -f 'Amount (KES)' -i -p '^(KES|Ksh)\s*|,' -r '' | csvtk replace -f 'Amount (KES)' -p '^\((.+)\)\$' -r '-\$1' | csvtk fmtdate -f 'Txn Date' --format 'YYYY-MM-DD' -k | csvtk rename2 -F -f '*' -p '[^A-Za-z0-9]+' -r '_' | csvtk uniq -E -F -f '*'"
 # qsv: trim, rename, null markers, currency, dates, dedupe. Nothing for booleans, empty rows or (500.00) negatives.
-run qsv     clean-messy bash -c "qsv input --trim-headers --trim-fields '$MESSY' | qsv rename txn_id,customer_name,phone,email,county,amount_kes,status,channel,txn_date,age,notes | qsv replace -i --not-one '^(NULL|n/a|none|-)$' '<NULL>' | qsv apply operations trim,squeeze 1- | qsv apply operations currencytonum amount_kes | qsv datefmt txn_date --formatstr '%Y-%m-%d' --prefer-dmy | qsv extdedup -s 1-"
+run qsv     clean-messy bash -c "qsv input --trim-headers --trim-fields '$MESSY' | qsv rename txn_id,customer_name,phone,email,county,amount_kes,status,channel,txn_date,age,notes | qsv replace -i --not-one '^(NULL|n/a|NaN|none|-+|[?])$' '<NULL>' | qsv apply operations trim,squeeze 1- | qsv apply operations currencytonum amount_kes | qsv datefmt txn_date --formatstr '%Y-%m-%d' --prefer-dmy | qsv extdedup -s 1-"
 # csvclean only repairs structure (row lengths, empty columns); it does not touch cell values.
 run csvkit  clean-messy csvclean -a --omit-error-rows "$MESSY"
 

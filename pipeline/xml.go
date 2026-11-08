@@ -278,9 +278,13 @@ func writeXML(w *bufio.Writer, t *Table) (int, error) {
 	for r := range t.Rows {
 		w.WriteString("  <row>")
 		for i, name := range names {
-			w.WriteString("<" + name + ">")
+			w.WriteString("<")
+			w.WriteString(name)
+			w.WriteString(">")
 			xml.EscapeText(w, []byte(r.Get(i)))
-			w.WriteString("</" + name + ">")
+			w.WriteString("</")
+			w.WriteString(name)
+			w.WriteString(">")
 		}
 		if _, err := w.WriteString("</row>\n"); err != nil {
 			return n, err

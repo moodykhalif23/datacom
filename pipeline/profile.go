@@ -206,17 +206,6 @@ func (r *Report) duplicates() string {
 	return s
 }
 
-// ident quotes a column name for the expression language when it is not a
-// plain identifier, e.g. [Customer Name].
-func ident(name string) string {
-	for _, r := range name {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_') {
-			return "[" + name + "]"
-		}
-	}
-	return name
-}
-
 func round(f float64, places int) float64 {
 	p := math.Pow(10, float64(places))
 	return math.Round(f*p) / p
