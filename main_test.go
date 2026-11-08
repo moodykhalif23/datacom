@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -58,7 +60,8 @@ func TestCommands(t *testing.T) {
 	}
 	log := filepath.Join(dir, "runs.jsonl")
 	runCLI(t, "clean", opts{in: src, dedupe: true, logFile: log, monitor: true})
-	if b, _ := os.ReadFile(log); !strings.Contains(string(b), `"rows_duplicate_dropped":1`) {
+	if b, _ := os.ReadFile(log); !strings.Contains(string(b), `"rows_duplicate_dropped":1`) ||
+		!strings.Contains(string(b), `"version":"datacom `) || !strings.Contains(string(b), `"time":"`) {
 		t.Fatalf("log: %s", b)
 	}
 }
@@ -103,5 +106,26 @@ func TestBadInputsReturnErrors(t *testing.T) {
 	}
 	if err := run(context.Background(), "bogus", opts{}); err == nil {
 		t.Error("unknown command should fail")
+	}
+}
+
+// TestClosedPipeStillLogs: when the reader goes away (| head), the run ends
+// with EPIPE and the -log line is still written.
+func TestClosedPipeStillLogs(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	stdout := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = stdout; w.Close() }()
+	log := filepath.Join(t.TempDir(), "runs.jsonl")
+	err = run(context.Background(), "query", opts{in: "testdata/messy.csv", logFile: log, quiet: true, format: "csv"})
+	if !errors.Is(err, syscall.EPIPE) {
+		t.Fatalf("err = %v, want EPIPE", err)
+	}
+	if b, _ := os.ReadFile(log); !strings.Contains(string(b), `"error":"`) || !strings.Contains(string(b), "broken pipe") {
+		t.Fatalf("log: %s", b)
 	}
 }

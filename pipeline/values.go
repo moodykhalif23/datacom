@@ -17,7 +17,60 @@ func IsNull(s string) bool {
 	if len(s) > 9 { // longer than any null word
 		return false
 	}
-	return nullWords[strings.ToLower(s)]
+	if s == "" {
+		return true
+	}
+	switch s[0] { // every null word starts with one of these
+	case 'n', 'N', 'u', 'U', '-', '?', '#':
+		return nullWords[strings.ToLower(s)]
+	}
+	return false
+}
+
+// plainNumber reports whether s is already in canonical numeric form, so it
+// can be kept as is: an optional '-', up to 15 digits with no leading zero
+// (a lone 0 aside) and, for floats, an optional fraction not ending in 0.
+func plainNumber(s string, k Kind) bool {
+	i := 0
+	if i < len(s) && s[i] == '-' {
+		i++
+	}
+	start := i
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	digits := i - start
+	if digits == 0 || digits > 15 || digits > 1 && s[start] == '0' {
+		return false
+	}
+	if i == len(s) {
+		return true
+	}
+	if k != KindFloat || s[i] != '.' {
+		return false
+	}
+	i++
+	frac := i
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	return i == len(s) && i > frac && s[i-1] != '0' && digits+i-frac <= 15
+}
+
+// messySpace reports whether s has a tab, newline or doubled space, the
+// cases where whitespace is collapsed.
+func messySpace(s string) bool {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\t', '\n', '\r':
+			return true
+		case ' ':
+			if i+1 < len(s) && s[i+1] == ' ' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 var dateLayouts = []string{
@@ -30,6 +83,9 @@ var dateLayouts = []string{
 // ParseDate tries common layouts and returns the time in UTC.
 func ParseDate(s string) (time.Time, bool) {
 	s = strings.TrimSpace(s)
+	if y, m, d, ok := isoDate(s); ok {
+		return time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC), true
+	}
 	if len(s) < 6 || len(s) > 40 || !looksLikeDate(s) {
 		return time.Time{}, false
 	}
@@ -135,6 +191,9 @@ func normalize(s string, k Kind) (string, bool) {
 	t := strings.TrimSpace(s)
 	switch k {
 	case KindInt, KindFloat:
+		if plainNumber(t, k) {
+			return t, true // already canonical
+		}
 		c := CleanNumber(t)
 		if _, err := strconv.ParseInt(c, 10, 64); err == nil && isCode(c) {
 			break // a phone number or padded ID in a numeric column: keep it and report it
@@ -153,6 +212,9 @@ func normalize(s string, k Kind) (string, bool) {
 			return "false", true
 		}
 	case KindDate:
+		if _, _, _, ok := isoDate(t); ok {
+			return t, true // already canonical
+		}
 		if d, ok := ParseDate(t); ok {
 			if d.Hour() == 0 && d.Minute() == 0 && d.Second() == 0 {
 				return d.Format("2006-01-02"), true
@@ -160,7 +222,7 @@ func normalize(s string, k Kind) (string, bool) {
 			return d.Format(time.RFC3339), true
 		}
 	}
-	if strings.ContainsAny(t, "\t\n\r") || strings.Contains(t, "  ") {
+	if messySpace(t) {
 		t = strings.Join(strings.Fields(t), " ")
 	}
 	return t, k == KindText
@@ -181,6 +243,36 @@ func SnakeHeader(h string) string {
 		}
 	}
 	return strings.TrimRight(b.String(), "_")
+}
+
+// isoDate parses the canonical YYYY-MM-DD form by hand: it is the most
+// common input by far and time.Parse would try five other layouts first.
+func isoDate(s string) (y, m, d int, ok bool) {
+	if len(s) != 10 || s[4] != '-' || s[7] != '-' {
+		return 0, 0, 0, false
+	}
+	num := func(a, b int) (int, bool) {
+		n := 0
+		for i := a; i < b; i++ {
+			c := s[i]
+			if c < '0' || c > '9' {
+				return 0, false
+			}
+			n = n*10 + int(c-'0')
+		}
+		return n, true
+	}
+	var okY, okM, okD bool
+	y, okY = num(0, 4)
+	m, okM = num(5, 7)
+	d, okD = num(8, 10)
+	if !okY || !okM || !okD || m < 1 || m > 12 || d < 1 {
+		return 0, 0, 0, false
+	}
+	if t := time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC); t.Day() != d { // e.g. 2024-02-30
+		return 0, 0, 0, false
+	}
+	return y, m, d, true
 }
 
 func looksLikeDate(s string) bool {

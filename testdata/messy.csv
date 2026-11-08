@@ -1,0 +1,10 @@
+Invoice No,Customer Name ,Region,Amount (KES),Invoice Date,Paid?,Email
+1001,Acme Ltd,Nairobi,"1,250.00",2025-01-15,Yes,ops@acme.co.ke
+1002, Kenya Power ,nairobi,"$3,400",15/02/2025,no,billing@kplc.go.ke
+1003,Safaricom PLC,Mombasa,"(500)",2025-03-01,TRUE,
+1004,N/A,Kisumu,NULL,2025-03-05,,fin@county.go.ke
+1001,Acme Ltd,Nairobi,"1,250.00",2025-01-15,Yes,ops@acme.co.ke
+,,,,,,
+1005,Tullow Oil,Nairobi,12000,2025-04-20,N,tx@tullow.com
+1006,Kenya Airways,Mombasa,8 750,2025-04-22,Y,fin@kq.com
+1007,KRA,Nairobi,99,2025-05-02,yes,tax@kra.go.ke

@@ -132,8 +132,12 @@ func commas(n int64) string {
 	return s
 }
 
-// RunReport is the summary of one run.
+// RunReport is the summary of one run. Time, Version and Command are filled
+// in by the caller so a log line identifies the run that produced it.
 type RunReport struct {
+	Time      string       `json:"time,omitempty"`
+	Version   string       `json:"version,omitempty"`
+	Command   []string     `json:"command,omitempty"`
 	Seconds   float64      `json:"seconds"`
 	RowsIn    int64        `json:"rows_in"`
 	RowsOut   int64        `json:"rows_out"`

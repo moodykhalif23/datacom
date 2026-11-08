@@ -3,7 +3,7 @@ package pipeline
 import (
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -229,20 +229,62 @@ func Sort(in *Table, key string) (*Table, error) {
 		if mon := in.monitor(); mon != nil && len(rows) > 100_000 {
 			mon.Note("sort buffered %s rows in memory; sort after -group or -limit when the input is large.", commas(int64(len(rows))))
 		}
-		sort.SliceStable(rows, func(a, b int) bool {
-			c := compare(rows[a].Get(i), rows[b].Get(i))
-			if desc {
-				return c > 0
+		// Parse each key once instead of on every comparison.
+		keyed := make([]keyedRow, len(rows))
+		for n, r := range rows {
+			keyed[n] = keyedRow{sortKeyOf(r.Get(i)), r}
+		}
+		rows = nil
+		slices.SortStableFunc(keyed, func(a, b keyedRow) int {
+			if a.key.empty != b.key.empty {
+				if a.key.empty { // empty cells last in both directions
+					return 1
+				}
+				return -1
 			}
-			return c < 0
+			c := a.key.compare(b.key)
+			if desc {
+				return -c
+			}
+			return c
 		})
-		for _, r := range rows {
-			if !out.send(ch, r) {
+		for _, k := range keyed {
+			if !out.send(ch, k.row) {
 				return
 			}
 		}
 	}()
 	return out, nil
+}
+
+// sortKey is a cell parsed once for sorting: numbers compare numerically,
+// text case-insensitively, as in compare.
+type sortKey struct {
+	num   float64
+	text  string
+	isNum bool
+	empty bool
+}
+
+type keyedRow struct {
+	key sortKey
+	row Row
+}
+
+func sortKeyOf(v string) sortKey {
+	if v == "" {
+		return sortKey{empty: true}
+	}
+	k := sortKey{text: strings.ToLower(v)}
+	k.num, k.isNum = ParseFloat(v)
+	return k
+}
+
+func (a sortKey) compare(b sortKey) int {
+	if a.isNum && b.isNum {
+		return cmpFloat(a.num, b.num)
+	}
+	return strings.Compare(a.text, b.text)
 }
 
 // compare orders two cell values: numbers numerically, text
