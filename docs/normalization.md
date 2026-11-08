@@ -73,6 +73,11 @@ is kept as text, and a column where most values are codes is a text column:
 - a leading `+` followed by seven or more digits: `+254712345678`
 - more than 15 digits: `12345678901234567`
 
+A comma followed by one or two digits and no dot after it is a decimal
+comma: `1.250,00` is 1250 and `3,50` is 3.5, as in exports from systems set
+to a European locale. `1,250` keeps its usual meaning of one thousand two
+hundred and fifty.
+
 ## Dates
 
 Recognised layouts: ISO 8601 with or without time and zone, `2006-01-02`,

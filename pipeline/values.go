@@ -98,13 +98,23 @@ func ParseDate(s string) (time.Time, bool) {
 }
 
 // CleanNumber strips thousands separators, currency symbols, percent signs
-// and accounting parentheses, returning a parseable numeric string.
+// and accounting parentheses, returning a parseable numeric string. A comma
+// with one or two digits after it and no dot later is a decimal comma, as
+// in "1.250,00" or "3,50", and the dots before it are thousands separators.
 func CleanNumber(s string) string {
 	s = stripCurrency(strings.TrimSpace(s))
 	neg := false
 	if strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
 		neg = true
 		s = s[1 : len(s)-1]
+	}
+	s = strings.TrimSuffix(s, "%")
+	if i := strings.LastIndexByte(s, ','); i >= 0 && strings.LastIndexByte(s, '.') < i {
+		if frac := s[i+1:]; len(frac) == 1 || len(frac) == 2 {
+			if _, err := strconv.Atoi(frac); err == nil {
+				s = strings.ReplaceAll(s[:i], ".", "") + "." + frac
+			}
+		}
 	}
 	var b strings.Builder
 	b.Grow(len(s))
