@@ -2,6 +2,8 @@
 
 <p align="center">A small, fast Go tool that turns large, messy data into clean, readable data.</p>
 
+<p align="center"><img src="docs/demo.gif" alt="datacom cleaning and querying a messy CSV in a terminal" width="880"></p>
+
 <p align="center"><img src="docs/demo.svg" alt="A messy CSV export going in; clean, typed rows and a report of every change coming out" width="800"></p>
 
 - [Architecture diagrams and command flow](docs/architecture.md)

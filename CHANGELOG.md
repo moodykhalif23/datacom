@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.0
 
 - More input shapes: semicolon-, tab- and pipe-delimited files are detected from the first line; UTF-16 files (Excel's "Unicode Text" export) are decoded; a `.zip` is opened and the first data file inside it is read.
 - European numbers: `1.250,00`, `3,50` and `12,5%` are read as 1250, 3.5 and 12.5. A comma followed by one or two digits is a decimal comma; `1,250` is still one thousand two hundred and fifty.
