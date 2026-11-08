@@ -63,69 +63,67 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	}
 	rowHashes := map[uint64]struct{}{}
 	dupCap := int64(distinctCap) * 10 // bounds the exact duplicate scan
-	for batch := range t.Rows {
-		for _, r := range batch {
-			rep.Rows++
-			if rep.Rows == 1 {
-				// Clean fills kinds before it emits its first row, so reading
-				// them after the first receive is race-free.
-				for i := range cols {
-					if i < len(kinds) && kinds[i] != KindEmpty {
-						cols[i].kind, cols[i].fixed = kinds[i], true
-					}
-				}
-			}
-			if rep.Rows <= dupCap {
-				rep.DupChecked++
-				h := hashRow(r)
-				if _, dup := rowHashes[h]; dup {
-					rep.Duplicate++
-				} else {
-					rowHashes[h] = struct{}{}
-				}
-			}
+	for r := range t.Rows {
+		rep.Rows++
+		if rep.Rows == 1 {
+			// Clean fills kinds before it emits its first row, so reading
+			// them after the first receive is race-free.
 			for i := range cols {
-				c := &cols[i]
-				v := strings.TrimSpace(r.Get(i))
-				if IsNull(v) {
-					c.Nulls++
-					continue
+				if i < len(kinds) && kinds[i] != KindEmpty {
+					cols[i].kind, cols[i].fixed = kinds[i], true
 				}
-				c.Count++
-				k := c.kind
-				if !c.fixed && c.kind != KindText {
-					k = Infer(v)
-					c.kind = Widen(c.kind, k)
+			}
+		}
+		if rep.Rows <= dupCap {
+			rep.DupChecked++
+			h := hashRow(r)
+			if _, dup := rowHashes[h]; dup {
+				rep.Duplicate++
+			} else {
+				rowHashes[h] = struct{}{}
+			}
+		}
+		for i := range cols {
+			c := &cols[i]
+			v := strings.TrimSpace(r.Get(i))
+			if IsNull(v) {
+				c.Nulls++
+				continue
+			}
+			c.Count++
+			k := c.kind
+			if !c.fixed && c.kind != KindText {
+				k = Infer(v)
+				c.kind = Widen(c.kind, k)
+			}
+			if f, ok := numeric(v, k); ok {
+				delta := f - c.mean
+				c.mean += delta / float64(c.Count)
+				c.m2 += delta * (f - c.mean)
+				if c.Count == 1 || f < c.minF {
+					c.minF = f
 				}
-				if f, ok := numeric(v, k); ok {
-					delta := f - c.mean
-					c.mean += delta / float64(c.Count)
-					c.m2 += delta * (f - c.mean)
-					if c.Count == 1 || f < c.minF {
-						c.minF = f
+				if c.Count == 1 || f > c.maxF {
+					c.maxF = f
+				}
+			}
+			if c.Count == 1 || v < c.minS {
+				c.minS = v
+			}
+			if c.Count == 1 || v > c.maxS {
+				c.maxS = v
+			}
+			if !c.capped {
+				c.seen[v]++
+				if len(c.seen) > distinctCap {
+					c.capped = true
+					c.sketch = newHLL()
+					for s := range c.seen {
+						c.sketch.add(hash64(hashSeed, s))
 					}
-					if c.Count == 1 || f > c.maxF {
-						c.maxF = f
-					}
 				}
-				if c.Count == 1 || v < c.minS {
-					c.minS = v
-				}
-				if c.Count == 1 || v > c.maxS {
-					c.maxS = v
-				}
-				if !c.capped {
-					c.seen[v]++
-					if len(c.seen) > distinctCap {
-						c.capped = true
-						c.sketch = newHLL()
-						for s := range c.seen {
-							c.sketch.add(hash64(hashSeed, s))
-						}
-					}
-				} else {
-					c.sketch.add(hash64(hashSeed, v))
-				}
+			} else {
+				c.sketch.add(hash64(hashSeed, v))
 			}
 		}
 	}

@@ -58,28 +58,26 @@ func Windows(in *Table, every time.Duration) <-chan *Table {
 		defer close(out)
 		tick := time.NewTicker(every)
 		defer tick.Stop()
-		cur, em := in.child(in.Header)
+		cur, ch := in.child(in.Header)
 		out <- cur
 		for {
 			select {
-			case batch, ok := <-in.Rows:
+			case r, ok := <-in.Rows:
 				if !ok {
-					em.close()
+					close(ch)
 					return
 				}
-				for _, r := range batch {
-					if !em.send(r) {
-						em.close()
-						return
-					}
+				if !cur.send(ch, r) {
+					close(ch)
+					return
 				}
 			case <-tick.C:
-				em.close()
-				cur, em = in.child(in.Header)
+				close(ch)
+				cur, ch = in.child(in.Header)
 				select {
 				case out <- cur:
 				case <-in.run.ctx.Done():
-					em.close()
+					close(ch)
 					return
 				}
 			}
@@ -98,29 +96,27 @@ func Trend(in *Table, keyCols int, prev map[string]Row) (*Table, map[string]Row)
 		hdr = append(hdr, h+"_change")
 	}
 	seen := map[string]Row{}
-	out, em := in.child(hdr)
+	out, ch := in.child(hdr)
 	go func() {
-		defer em.close()
-		for batch := range in.Rows {
-			for _, r := range batch {
-				r = fit(r, len(in.Header))
-				key := strings.Join(r[:keyCols], "\x00")
-				seen[key] = r
-				last, ok := prev[key]
-				for i := keyCols; i < len(in.Header); i++ {
-					switch cur, err := strconv.ParseFloat(r[i], 64); {
-					case !ok:
-						r = append(r, "new")
-					case err != nil:
-						r = append(r, "")
-					default:
-						before, _ := strconv.ParseFloat(last.Get(i), 64)
-						r = append(r, strconv.FormatFloat(cur-before, 'f', -1, 64))
-					}
+		defer close(ch)
+		for r := range in.Rows {
+			r = fit(r, len(in.Header))
+			key := strings.Join(r[:keyCols], "\x00")
+			seen[key] = r
+			last, ok := prev[key]
+			for i := keyCols; i < len(in.Header); i++ {
+				switch cur, err := strconv.ParseFloat(r[i], 64); {
+				case !ok:
+					r = append(r, "new")
+				case err != nil:
+					r = append(r, "")
+				default:
+					before, _ := strconv.ParseFloat(last.Get(i), 64)
+					r = append(r, strconv.FormatFloat(cur-before, 'f', -1, 64))
 				}
-				if !em.send(r) {
-					return
-				}
+			}
+			if !out.send(ch, r) {
+				return
 			}
 		}
 	}()

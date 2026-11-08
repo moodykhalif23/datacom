@@ -139,3 +139,17 @@ func TestClosedPipeStillLogs(t *testing.T) {
 		t.Fatalf("log: %s", b)
 	}
 }
+
+func TestSQLTableName(t *testing.T) {
+	for in, want := range map[string]string{
+		"sales.csv": "sales", "/tmp/Sales Q1-2025.csv.gz": "sales_q1_2025", "2025.csv": "data_2025",
+		"https://x.test/exports/tx.ndjson?token=1": "tx", "": "data", "-": "data",
+	} {
+		if got := sqlTable(opts{in: in}); got != want {
+			t.Errorf("sqlTable(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := sqlTable(opts{in: "a.csv", out: "report.sql"}); got != "report" {
+		t.Errorf("out name wins: got %q", got)
+	}
+}

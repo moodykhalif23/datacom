@@ -23,18 +23,18 @@ const FormatParquet Format = "parquet"
 // ReadParquet streams a file row group by row group. Nested fields are
 // flattened to dotted names and repeated values become JSON arrays.
 func ReadParquet(ctx context.Context, r io.Reader) *Table {
-	t, em := newRoot(ctx, nil)
+	t, ch := newRoot(ctx, nil)
 	f, size, cleanup, err := seekable(r)
 	if err != nil {
 		t.fail(err)
-		em.close()
+		close(ch)
 		return t
 	}
 	pf, err := parquet.OpenFile(f, size)
 	if err != nil {
 		cleanup()
 		t.fail(err)
-		em.close()
+		close(ch)
 		return t
 	}
 	schema := pf.Schema()
@@ -52,7 +52,7 @@ func ReadParquet(ctx context.Context, r io.Reader) *Table {
 	uniqueHeaders(hdr)
 	t.Header = hdr
 	go func() {
-		defer em.close()
+		defer close(ch)
 		defer cleanup()
 		buf := make([]parquet.Row, 256)
 		lists := make([][]string, len(paths))
@@ -82,7 +82,7 @@ func ReadParquet(ctx context.Context, r io.Reader) *Table {
 							lists[c] = vals[:0]
 						}
 					}
-					if !em.send(row) {
+					if !t.send(ch, row) {
 						rows.Close()
 						return
 					}
@@ -250,16 +250,14 @@ func writeParquet(w io.Writer, t *Table) (int, error) {
 	kinds := make([]Kind, len(t.Header))
 	tallies := make([]tally, len(t.Header))
 	timed := make([]bool, len(t.Header)) // dates that carry a time of day
-	for rows := range t.Rows { // whole batches, so no row is left half-read
-		for _, r := range rows {
-			head = append(head, r)
-			for i := 0; i < len(kinds) && i < len(r); i++ {
-				k := Infer(r[i])
-				tallies[i].add(k)
-				timed[i] = timed[i] || k == KindDate && len(strings.TrimSpace(r[i])) > 10
-			}
+	for r := range t.Rows {
+		head = append(head, r)
+		for i := 0; i < len(kinds) && i < len(r); i++ {
+			k := Infer(r[i])
+			tallies[i].add(k)
+			timed[i] = timed[i] || k == KindDate && len(strings.TrimSpace(r[i])) > 10
 		}
-		if len(head) >= sample {
+		if len(head) == sample {
 			break
 		}
 	}
@@ -315,11 +313,9 @@ func writeParquet(w io.Writer, t *Table) (int, error) {
 			return n, err
 		}
 	}
-	for rows := range t.Rows {
-		for _, r := range rows {
-			if err := write(r); err != nil {
-				return n, err
-			}
+	for r := range t.Rows {
+		if err := write(r); err != nil {
+			return n, err
 		}
 	}
 	if err := flush(); err != nil {

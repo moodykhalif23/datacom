@@ -232,7 +232,7 @@ func (s *uiServer) columns(w http.ResponseWriter, r *http.Request) {
 	}
 	hdr := t.Header
 	cancel()
-	for range t.Each() { // let every stage unwind before the source closes
+	for range t.Rows { // let every stage unwind before the source closes
 	}
 	reply(w, map[string]any{"columns": hdr})
 }
@@ -380,7 +380,7 @@ func (j *job) makePreview() (preview, error) {
 	defer closeFn()
 	t := pipeline.Read(ctx, r, f)
 	pv := preview{Header: t.Header}
-	for row := range t.Each() {
+	for row := range t.Rows {
 		pv.Rows = append(pv.Rows, row)
 		if len(pv.Rows) == previewRows {
 			cancel()

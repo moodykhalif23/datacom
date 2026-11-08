@@ -16,6 +16,7 @@ cd "$(dirname "$0")/.."
 WORK=$(mkdir -p "${1:-.bench}" && cd "${1:-.bench}" && pwd); ROWS=${2:-1000000}; REPS=${REPS:-3}
 export PATH="$WORK/tools:$HOME/.local/bin:$PATH"
 export QSV_NO_UPDATE=1 QSV_STATSCACHE_MODE=none   # no release check over the network, no stats cache between runs
+unset AI_AGENT   # DuckDB 2 changes its output format when this is set
 mkdir -p "$WORK/tools" "$WORK/out"
 go build -o "$WORK/tools/datacom" . && go build -o "$WORK/tools/gendata" ./tools/gendata && go build -o "$WORK/tools/benchrun" ./tools/benchrun
 
