@@ -25,7 +25,8 @@ html { background: var(--paper); }
 body { margin: 0; color: var(--ink); font: 16px/1.5 var(--sans); }
 main { max-width: 760px; margin: 0 auto; padding: 0 20px 72px; }
 header { max-width: 760px; margin: 0 auto; padding: 44px 20px 18px; border-bottom: 1px solid var(--line); }
-h1 { margin: 0; font: 400 36px/1.1 var(--serif); letter-spacing: .005em; }
+h1 { margin: 0; line-height: 0; }
+h1 img { display: block; width: min(420px, 100%); height: auto; border-radius: 8px; border: 1px solid var(--line); }
 .lede { margin: 10px 0 0; color: var(--muted); max-width: 60ch; }
 section { padding: 30px 0; border-bottom: 1px solid var(--line-soft); }
 h2 { margin: 0 0 4px; font: 400 23px/1.2 var(--serif); }
@@ -96,7 +97,6 @@ td:empty::after { content: "—"; color: var(--line); }
 footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(--muted); font-size: 13px; }
 @media (max-width: 560px) {
   header { padding-top: 28px; }
-  h1 { font-size: 30px; }
   .rows .inline > * { flex: 1 1 100%; }
   select.col, select.cond, select.fn { width: 100%; }
 }
@@ -104,7 +104,7 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
 </head>
 <body>
 <header>
-  <h1>datacom</h1>
+  <h1><img src="/logo.jpg" alt="datacom" width="420" height="280"></h1>
   <p class="lede">Cleans up big, messy spreadsheets and data files. Nothing leaves your computer. This page only talks to the datacom program running on it.</p>
 </header>
 

@@ -82,6 +82,9 @@ func TestUI(t *testing.T) {
 	if !strings.Contains(string(page), s.token) || strings.Contains(string(page), "{{") {
 		t.Fatal("page is missing the token or still has placeholders")
 	}
+	if res, err := http.Get(srv.URL + "/logo.jpg"); err != nil || res.StatusCode != 200 || res.Header.Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("logo: %v %v", err, res)
+	}
 	if code, _ := (&uiClient{t, srv.URL, "wrong"}).do("POST", "/api/columns", strings.NewReader("{}"), "application/json"); code != 403 {
 		t.Fatalf("bad token: status %d, want 403", code)
 	}

@@ -26,6 +26,9 @@ import (
 //go:embed ui.html
 var uiHTML string
 
+//go:embed ui-logo.jpg
+var uiLogo []byte
+
 const (
 	uiPort      = "7878"
 	previewRows = 50
@@ -114,6 +117,7 @@ func (s *uiServer) close() {
 func (s *uiServer) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.index)
+	mux.HandleFunc("GET /logo.jpg", s.logo)
 	mux.HandleFunc("POST /api/upload", s.upload)
 	mux.HandleFunc("POST /api/columns", s.columns)
 	mux.HandleFunc("POST /api/run", s.start)
@@ -135,6 +139,12 @@ func (s *uiServer) index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page := strings.NewReplacer("{{TOKEN}}", s.token, "{{VERSION}}", versionString()).Replace(uiHTML)
 	io.WriteString(w, page)
+}
+
+func (s *uiServer) logo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "max-age=86400")
+	w.Write(uiLogo)
 }
 
 // upload copies the browser's file into the working folder and returns its
