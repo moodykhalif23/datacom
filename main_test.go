@@ -179,12 +179,28 @@ func TestWatchGzip(t *testing.T) {
 	os.WriteFile(path, buf.Bytes(), 0o644)
 	out := filepath.Join(t.TempDir(), "watch.txt")
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() { time.Sleep(700 * time.Millisecond); cancel() }()
-	err := run(ctx, "watch", opts{in: path, every: 300 * time.Millisecond, group: "s", agg: "sum(n)", sortKey: "s", out: out, quiet: true, format: "csv"})
-	if err != nil {
-		t.Fatal(err)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, "watch", opts{in: path, every: 200 * time.Millisecond, group: "s", agg: "sum(n)", sortKey: "s", out: out, quiet: true, format: "csv"})
+	}()
+	// The rows must appear while the file is still being followed, not only
+	// once the run is cancelled and the reader gives up its buffered tail.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if b, _ := os.ReadFile(out); strings.Contains(string(b), "a,1,new\nb,2,new\n") {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			<-done
+			b, _ := os.ReadFile(out)
+			t.Fatalf("rows were not delivered while following:\n%s", b)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	if b, _ := os.ReadFile(out); !strings.Contains(string(b), "a,1,new\nb,2,new\n") {
-		t.Fatalf("watch output:\n%s", b)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }

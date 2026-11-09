@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- `watch` decompresses a growing `.gz` or `.zst` file the way the other commands do, instead of parsing the compressed bytes as rows.
+- `watch` decompresses a growing `.gz` or `.zst` file the way the other commands do, instead of parsing the compressed bytes as rows, and hands over the last rows of a gzip member as soon as they are decoded rather than holding them until the file grows again.
 - The browser interface shows the logo in a bar fixed to the top of the page.
 
 ## v0.1.0

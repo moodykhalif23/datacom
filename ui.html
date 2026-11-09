@@ -290,7 +290,7 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
 "use strict";
 const TOKEN = "{{TOKEN}}";
 const $ = (id) => document.getElementById(id);
-const S = { source: "", name: "", columns: [], loadedSnake: false, job: null, jobCmd: "", timer: null, join: { source: "", name: "" } };
+const S = { source: "", name: "", columns: [], loadedSnake: false, job: null, jobCmd: "", timer: null, lastRows: -1, lastChange: 0, join: { source: "", name: "" } };
 
 const CONDS = [
   ["eq", "is"], ["ne", "is not"], ["gt", "is more than"], ["lt", "is less than"],
@@ -603,7 +603,7 @@ async function runJob() {
   $("run").disabled = true; $("stop").hidden = false; progress("Starting…");
   try {
     const { id } = await api("/api/run", req);
-    S.job = id; S.jobCmd = req.cmd;
+    S.job = id; S.jobCmd = req.cmd; S.lastRows = -1; S.lastChange = Date.now();
     poll();
   } catch (e) { showError(e.message); finishUI(); }
 }
@@ -614,7 +614,10 @@ async function poll() {
   try { st = await api("/api/job/" + S.job); }
   catch (e) { showError(e.message); finishUI(); return; }
   if (!st.done) {
-    progress("Working… " + fmt(st.rows_in) + " rows read" + (st.bytes ? " · " + mb(st.bytes) : "") + " · " + secs(st.seconds));
+    let line = "Working… " + fmt(st.rows_in) + " rows read" + (st.bytes ? " · " + mb(st.bytes) : "") + " · " + secs(st.seconds);
+    if (st.rows_in !== S.lastRows) { S.lastRows = st.rows_in; S.lastChange = Date.now(); }
+    else if (S.jobCmd === "watch" && Date.now() - S.lastChange > 3000) line += " · no new rows; press Stop to finish";
+    progress(line);
     if (st.text !== undefined) showText(st.text);
     S.timer = setTimeout(poll, 500);
     return;

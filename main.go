@@ -327,7 +327,7 @@ func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow
 		if f == "" {
 			f = pipeline.FormatNDJSON
 		}
-		in, err := pipeline.Decompress(r)
+		in, err := pipeline.Decompress(r, true)
 		if err != nil {
 			return nil, nil, err
 		}
