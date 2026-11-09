@@ -22,11 +22,12 @@
 }
 * { box-sizing: border-box; }
 html { background: var(--paper); }
-body { margin: 0; color: var(--ink); font: 16px/1.5 var(--sans); }
+body { margin: 0; padding-top: 56px; color: var(--ink); font: 16px/1.5 var(--sans); }
 main { max-width: 760px; margin: 0 auto; padding: 0 20px 72px; }
-header { max-width: 760px; margin: 0 auto; padding: 44px 20px 18px; border-bottom: 1px solid var(--line); }
-h1 { margin: 0; line-height: 0; }
-h1 img { display: block; width: min(420px, 100%); height: auto; border-radius: 8px; border: 1px solid var(--line); }
+header { max-width: 760px; margin: 0 auto; padding: 30px 20px 18px; border-bottom: 1px solid var(--line); }
+.bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; height: 56px; display: flex; align-items: center; padding: 0 16px; background: var(--paper); border-bottom: 1px solid var(--line-soft); }
+.bar h1 { margin: 0; line-height: 0; }
+.bar img { display: block; height: 40px; width: auto; border-radius: 5px; }
 .lede { margin: 10px 0 0; color: var(--muted); max-width: 60ch; }
 section { padding: 30px 0; border-bottom: 1px solid var(--line-soft); }
 h2 { margin: 0 0 4px; font: 400 23px/1.2 var(--serif); }
@@ -103,8 +104,8 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
 </style>
 </head>
 <body>
+<nav class="bar"><h1><img src="/logo.jpg" alt="datacom" width="60" height="40"></h1></nav>
 <header>
-  <h1><img src="/logo.jpg" alt="datacom" width="420" height="280"></h1>
   <p class="lede">Cleans up big, messy spreadsheets and data files. Nothing leaves your computer. This page only talks to the datacom program running on it.</p>
 </header>
 
