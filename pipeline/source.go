@@ -104,20 +104,35 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 			return f, rf, closeFn, nil // xlsx and parquet need the seekable file itself
 		}
 	}
+	br, err := Decompress(r)
+	if err != nil {
+		closeFn()
+		return nil, "", nil, err
+	}
+	f := hint
+	if f == "" || f == FormatAuto {
+		f = guessFormat(src, br)
+	}
+	return br, f, closeFn, nil
+}
+
+// Decompress returns r with gzip or zstd compression and a UTF-16 byte order
+// mark removed, detected from the first bytes. Open and the watch follower
+// share it, so a growing .gz file is read the same way as a finished one.
+func Decompress(r io.Reader) (*bufio.Reader, error) {
 	br := bufio.NewReaderSize(r, 1<<20)
 	magic, _ := br.Peek(2)
-	if len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+	switch {
+	case len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b:
 		gz, err := gzip.NewReader(br)
 		if err != nil {
-			closeFn()
-			return nil, "", nil, err
+			return nil, err
 		}
 		br = bufio.NewReaderSize(gz, 1<<20)
-	} else if len(magic) == 2 && magic[0] == 0x28 && magic[1] == 0xb5 { // zstd
+	case len(magic) == 2 && magic[0] == 0x28 && magic[1] == 0xb5: // zstd
 		zr, err := zstd.NewReader(br)
 		if err != nil {
-			closeFn()
-			return nil, "", nil, err
+			return nil, err
 		}
 		br = bufio.NewReaderSize(zr, 1<<20)
 	}
@@ -125,11 +140,7 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 		br.Discard(2)
 		br = bufio.NewReaderSize(newUTF16Reader(br, bom[0] == 0xfe), 1<<20)
 	}
-	f := hint
-	if f == "" || f == FormatAuto {
-		f = guessFormat(src, br)
-	}
-	return br, f, closeFn, nil
+	return br, nil
 }
 
 func guessFormat(name string, br *bufio.Reader) Format {

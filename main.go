@@ -327,7 +327,11 @@ func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow
 		if f == "" {
 			f = pipeline.FormatNDJSON
 		}
-		return pipeline.Read(ctx, meter(mon, r), f), func() error { return nil }, nil
+		in, err := pipeline.Decompress(r)
+		if err != nil {
+			return nil, nil, err
+		}
+		return pipeline.Read(ctx, meter(mon, in), f), func() error { return nil }, nil
 	}
 	r, f, closeFn, err := pipeline.Open(ctx, src, pipeline.Format(o.inFormat))
 	if err != nil {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"os"
@@ -163,5 +165,26 @@ func TestCompressedOutput(t *testing.T) {
 		if !strings.HasPrefix(got, "invoice_no,customer_name,region,amount_kes,invoice_date,paid,email\n1001,") || strings.Count(got, "\n") != 3 {
 			t.Fatalf("%s round trip:\n%s", ext, got)
 		}
+	}
+}
+
+// TestWatchGzip checks that a followed .gz file is decompressed rather than
+// parsed as rows of compressed bytes.
+func TestWatchGzip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "live.ndjson.gz")
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	zw.Write([]byte("{\"s\":\"a\",\"n\":1}\n{\"s\":\"b\",\"n\":2}\n"))
+	zw.Close()
+	os.WriteFile(path, buf.Bytes(), 0o644)
+	out := filepath.Join(t.TempDir(), "watch.txt")
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(700 * time.Millisecond); cancel() }()
+	err := run(ctx, "watch", opts{in: path, every: 300 * time.Millisecond, group: "s", agg: "sum(n)", sortKey: "s", out: out, quiet: true, format: "csv"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(out); !strings.Contains(string(b), "a,1,new\nb,2,new\n") {
+		t.Fatalf("watch output:\n%s", b)
 	}
 }

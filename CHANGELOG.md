@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `watch` decompresses a growing `.gz` or `.zst` file the way the other commands do, instead of parsing the compressed bytes as rows.
+- The browser interface shows the logo in a bar fixed to the top of the page.
+
 ## v0.1.0
 
 - More input shapes: semicolon-, tab- and pipe-delimited files are detected from the first line; UTF-16 files (Excel's "Unicode Text" export) are decoded; a `.zip` is opened and the first data file inside it is read.
