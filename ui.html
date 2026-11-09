@@ -260,7 +260,9 @@ footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(-
   <div class="panel" data-for="watch">
     <label for="every">Show a fresh summary every</label>
     <div class="inline"><input type="text" id="every" class="short" value="10s"><span class="help">for example 10s, 1m, 2m30s</span></div>
-    <p class="help">Watch only works on a file path typed in step 1, because a copied file never grows. Press Stop to end it.</p>
+    <label for="idle">Finish once the file has not changed for</label>
+    <div class="inline"><input type="text" id="idle" class="short" value="30s"><span class="help">leave blank to keep watching until you press Stop</span></div>
+    <p class="help">Watch only works on a file path typed in step 1, because a copied file never grows. With no totals ticked, each window shows how many new rows arrived.</p>
   </div>
 </section>
 
@@ -582,7 +584,11 @@ function buildRequest() {
     }
   }
   if (["clean", "query", "convert"].includes(c)) req.format = $("format").value;
-  if (c === "watch") req.every = $("every").value.trim() || "10s";
+  if (c === "watch") {
+    req.every = $("every").value.trim() || "10s";
+    req.idle = $("idle").value.trim();
+    if (!req.group && !req.agg) { req.agg = "count"; req.sort = ""; }
+  }
   return req;
 }
 
@@ -650,7 +656,7 @@ function render(st) {
   const read = fmt(r.rows_in) + " rows read";
   $("summary").textContent =
     c === "profile" ? "Done in " + t + ". " + read + "." :
-    c === "watch" ? "Stopped after " + t + ". " + read + "." :
+    c === "watch" ? "Watched for " + t + ". " + read + "." :
     "Done in " + t + ". " + read + ", " + fmt(r.rows_out) + " written.";
 
   const findings = [];

@@ -93,7 +93,7 @@ Output is a table on a terminal and CSV when piped. Choose with `-f table|csv|ts
 
 ### Watch
 
-`datacom watch file -every 10s [-where ...] [-derive ...] [-group ... -agg ...]` follows the file like `tail -f` (restarting if it is truncated or rotated) and prints one report per window. Stdin works too: `kafka-console-consumer ... | datacom watch -every 30s -group topic -agg count`.
+`datacom watch file -every 10s [-where ...] [-derive ...] [-group ... -agg ...]` follows the file like `tail -f` (restarting if it is truncated or rotated) and prints one report per window. Add `-idle 1m` to stop once the file has gone a minute without changes, so a finished file is read once and the command returns; without it, watch runs until Ctrl-C. Stdin works too: `kafka-console-consumer ... | datacom watch -every 30s -group topic -agg count`.
 
 ### Parquet
 

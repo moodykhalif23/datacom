@@ -58,6 +58,7 @@ clean / query / watch flags:
   -sort col     sort by column; "-col" for descending (buffers rows)
   -limit n      stop after n rows
   -every 10s    watch: window length (watch only)
+  -idle 1m      watch: stop once the file has not changed for this long (0 = never)
 
 profile flags:
   -top n        values to list per column (5)   -json   machine-readable report
@@ -81,7 +82,7 @@ type opts struct {
 	join, on                         string
 	limit, top                       int
 	jsonReport                       bool
-	every                            time.Duration
+	every, idle                      time.Duration
 	where, derive                    multi
 
 	// Used by the browser UI: it polls mon for progress and gets the report
@@ -147,6 +148,7 @@ func main() {
 	fs.BoolVar(&o.monitor, "monitor", false, "")
 	fs.StringVar(&o.logFile, "log", "", "")
 	fs.DurationVar(&o.every, "every", 10*time.Second, "")
+	fs.DurationVar(&o.idle, "idle", 0, "")
 
 	// Accept the source before or after the flags.
 	args := os.Args[2:]
@@ -319,7 +321,7 @@ func sqlTable(o opts) string {
 // open reads a source into a raw table (a followed file for watch).
 func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow bool) (*pipeline.Table, func() error, error) {
 	if follow {
-		r, err := pipeline.Follow(ctx, src)
+		r, err := pipeline.Follow(ctx, src, o.idle)
 		if err != nil {
 			return nil, nil, err
 		}

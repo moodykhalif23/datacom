@@ -267,6 +267,7 @@ type runRequest struct {
 	Top       int      `json:"top"`
 	JSON      bool     `json:"json"`
 	Every     string   `json:"every"`
+	Idle      string   `json:"idle"`
 }
 
 // job is one run started from the page. The page polls it for progress and,
@@ -319,6 +320,15 @@ func (s *uiServer) start(w http.ResponseWriter, r *http.Request) {
 		}
 		every = d
 	}
+	var idle time.Duration
+	if q.Idle != "" {
+		d, err := time.ParseDuration(q.Idle)
+		if err != nil || d < 0 {
+			fail(w, errors.New("the finish-after time should look like 30s or 2m, or be left blank"), http.StatusBadRequest)
+			return
+		}
+		idle = d
+	}
 	format, ext := pipeline.Format(q.Format), ""
 	switch q.Cmd {
 	case "profile":
@@ -348,7 +358,7 @@ func (s *uiServer) start(w http.ResponseWriter, r *http.Request) {
 		quiet: true, snake: q.Snake, dedupe: q.Dedupe, keepEmpty: q.KeepEmpty, noTypes: q.NoTypes,
 		join: q.Join, on: q.On, derive: q.Derive, where: q.Where, selectCols: q.Select,
 		group: q.Group, agg: q.Agg, sortKey: q.Sort, limit: q.Limit, top: q.Top, jsonReport: q.JSON,
-		every: every, mon: j.mon,
+		every: every, idle: idle, mon: j.mon,
 		onReport: func(rep pipeline.RunReport) {
 			j.mu.Lock()
 			j.report = rep

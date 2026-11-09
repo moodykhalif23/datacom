@@ -115,7 +115,7 @@ func TestWindowsAndFollow(t *testing.T) {
 	f.WriteString("{\"n\":1}\n")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	r, err := Follow(ctx, f.Name())
+	r, err := Follow(ctx, f.Name(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,5 +229,28 @@ func TestXLSXRoundTrip(t *testing.T) {
 	rows := collect(back)
 	if got := strings.Join(back.Header, ",") + "|" + strings.Join(rows, ";"); got != "id,name,ok,when,amount|1,Acme <Ltd>,true,2025-01-15,1250.5;2,,false,2025-05-02 18:00:00" {
 		t.Fatalf("round trip %q (err %v)", got, back.Err())
+	}
+}
+
+// TestFollowIdle checks that a file nobody has written to for longer than
+// idle ends the follow instead of waiting forever.
+func TestFollowIdle(t *testing.T) {
+	path := t.TempDir() + "/old.csv"
+	os.WriteFile(path, []byte("a,b\n1,2\n"), 0o644)
+	past := time.Now().Add(-time.Minute)
+	os.Chtimes(path, past, past)
+	r, err := Follow(context.Background(), path, 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan []byte, 1)
+	go func() { b, _ := io.ReadAll(r); done <- b }()
+	select {
+	case b := <-done:
+		if string(b) != "a,b\n1,2\n" {
+			t.Fatalf("read %q", b)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("follow did not end for an idle file")
 	}
 }

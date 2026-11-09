@@ -10,8 +10,10 @@ import (
 )
 
 // Follow returns a reader over path that keeps delivering data as the file
-// grows, like tail -f. It never reports EOF; cancel ctx to stop.
-func Follow(ctx context.Context, path string) (io.Reader, error) {
+// grows, like tail -f. With idle zero it never reports EOF and ctx must be
+// cancelled to stop; otherwise it reports EOF once the file has not been
+// written to for idle, so a finished file ends like an ordinary read.
+func Follow(ctx context.Context, path string, idle time.Duration) (io.Reader, error) {
 	if path == "" || path == "-" {
 		return os.Stdin, nil
 	}
@@ -19,7 +21,7 @@ func Follow(ctx context.Context, path string) (io.Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &follower{ctx: ctx, path: path, f: f}, nil
+	return &follower{ctx: ctx, path: path, f: f, idle: idle}, nil
 }
 
 type follower struct {
@@ -27,6 +29,7 @@ type follower struct {
 	path string
 	f    *os.File
 	off  int64
+	idle time.Duration
 }
 
 func (t *follower) Read(p []byte) (int, error) {
@@ -36,11 +39,16 @@ func (t *follower) Read(p []byte) (int, error) {
 		if n > 0 || err != io.EOF {
 			return n, err
 		}
-		if st, err := os.Stat(t.path); err == nil && st.Size() < t.off {
-			if f, err := os.Open(t.path); err == nil { // rotated or truncated
-				t.f.Close()
-				t.f, t.off = f, 0
-				continue
+		if st, err := os.Stat(t.path); err == nil {
+			if st.Size() < t.off {
+				if f, err := os.Open(t.path); err == nil { // rotated or truncated
+					t.f.Close()
+					t.f, t.off = f, 0
+					continue
+				}
+			}
+			if t.idle > 0 && time.Since(st.ModTime()) > t.idle {
+				return 0, io.EOF
 			}
 		}
 		select {

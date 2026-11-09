@@ -4,6 +4,7 @@
 
 - `watch` decompresses a growing `.gz` or `.zst` file the way the other commands do, instead of parsing the compressed bytes as rows, and hands over the last rows of a gzip member as soon as they are decoded rather than holding them until the file grows again.
 - The browser interface shows the logo in a bar fixed to the top of the page.
+- `watch -idle 1m` stops once the file has not changed for that long instead of following forever. The browser interface uses 30 s unless told otherwise, and counts rows per window when no totals are chosen, which is far faster than printing every row.
 
 ## v0.1.0
 
