@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -202,5 +205,75 @@ func TestWatchGzip(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRedactCommand(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "runs.jsonl")
+	out := runCLI(t, "clean", opts{in: "testdata/messy.csv", snake: true, redact: "all", logFile: log})
+	if strings.Contains(out, "@") || strings.Count(out, "[EMAIL]") != 7 {
+		t.Fatalf("clean -redact all:\n%s", out)
+	}
+	if b, _ := os.ReadFile(log); !strings.Contains(string(b), `"masked:email":7`) {
+		t.Fatalf("log: %s", b)
+	}
+	prof := runCLI(t, "profile", opts{in: "testdata/messy.csv", jsonReport: true})
+	if !strings.Contains(prof, `"personal_data": {`) || !strings.Contains(prof, "clean -redact emails masks it") {
+		t.Fatalf("profile:\n%s", prof)
+	}
+	o := opts{in: "testdata/messy.csv", redact: "names", out: filepath.Join(t.TempDir(), "x.csv"), quiet: true}
+	if err := run(context.Background(), "clean", o); err == nil || !strings.Contains(err.Error(), `"names"`) {
+		t.Fatalf("bad -redact: %v", err)
+	}
+}
+
+func TestManifest(t *testing.T) {
+	dir := t.TempDir()
+	read := func(path string) map[string]any {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatalf("%v\n%s", err, b)
+		}
+		return m
+	}
+	sum := func(path string) string {
+		b, _ := os.ReadFile(path)
+		h := sha256.Sum256(b)
+		return hex.EncodeToString(h[:])
+	}
+	out, man := filepath.Join(dir, "out.csv.gz"), filepath.Join(dir, "run.json")
+	runCLI(t, "query", opts{in: "testdata/messy.csv", snake: true, dedupe: true, where: multi{"amount_kes > 1000", "paid == true"},
+		redact: "emails", out: out, manifest: man, limit: 1})
+	m := read(man)
+	in := m["inputs"].([]any)[0].(map[string]any)
+	if m["status"] != "ok" || in["sha256"] != sum("testdata/messy.csv") || in["complete"] != true || in["role"] != "input" {
+		t.Fatalf("inputs: %v", m)
+	}
+	o := m["outputs"].([]any)[0].(map[string]any)
+	if o["sha256"] != sum(out) || o["rows"] != 1.0 || o["format"] != "csv" {
+		t.Fatalf("outputs: %v (file %s)", o, sum(out))
+	}
+	b, _ := os.ReadFile(man)
+	for _, want := range []string{`"rule": "dedupe",`, `"rule": "where",
+      "expression": "amount_kes > 1000",
+      "rows_dropped": 3`, `"rule": "limit",`, `"email": `} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("manifest lacks %q:\n%s", want, b)
+		}
+	}
+	bad := filepath.Join(dir, "bad.json")
+	err := run(context.Background(), "query", opts{in: "testdata/messy.csv", selectCols: "zzz", out: filepath.Join(dir, "x.csv"), manifest: bad, quiet: true})
+	if m := read(bad); err == nil || m["status"] != "error" || !strings.Contains(m["error"].(string), "zzz") {
+		t.Fatalf("error manifest: %v (err %v)", m, err)
+	}
+	missing := filepath.Join(dir, "missing.json")
+	run(context.Background(), "clean", opts{in: "nope.csv", out: filepath.Join(dir, "y.csv"), manifest: missing, quiet: true})
+	if m := read(missing); m["status"] != "error" {
+		t.Fatalf("missing input manifest: %v", m)
 	}
 }

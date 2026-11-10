@@ -87,6 +87,15 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 		}
 		r, closeFn = f, f.Close
 	}
+	if l := ledgerFrom(ctx); l != nil {
+		if f, ok := r.(*os.File); ok && f != os.Stdin {
+			l.file(src)
+		} else if src == "" || src == "-" {
+			r = l.stream("stdin", r)
+		} else {
+			r = l.stream(src, r)
+		}
+	}
 	if f, ok := r.(*os.File); ok {
 		rf := randomAccessFormat(src, f)
 		if rf == FormatZip {

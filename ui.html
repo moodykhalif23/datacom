@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>datacom</title>
+<script>
+(() => {
+  let t = null;
+  try { t = localStorage.getItem("datacom-theme"); } catch {}
+  if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  document.documentElement.dataset.theme = t;
+})();
+</script>
 <style>
 :root {
   color-scheme: dark;
@@ -12,11 +20,20 @@
   --text: #e7edf5; --text-2: #9aa7b8; --muted: #7a889c; --on-accent: #04121f;
   --blue: #2f7bff; --cyan: #22b8f0; --green: #2bd576; --purple: #8b5cf6; --warn: #f5b941; --danger: #ff6b6b;
   --grad: linear-gradient(90deg, #2f7bff, #2bd576);
-  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --r-sm: 2px; --r-md: 4px; --r-lg: 4px;
+  --hover-soft: rgb(255 255 255 / .03); --drop-over: #0f1a24;
   --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a889c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2304121f' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+:root[data-theme=light] {
+  color-scheme: light;
+  --app: #f4f6f9; --rail: #eceff4; --panel: #ffffff; --raised: #f0f3f7; --hover: #e4e9f0;
+  --line: #dfe4eb; --line-strong: #c5cfdb;
+  --text: #0e1621; --text-2: #445264; --muted: #5f6d80;
+  --blue: #1f6bf0; --cyan: #0b78ad; --green: #12804a; --warn: #a86c12; --danger: #cf3434;
+  --hover-soft: rgb(15 23 32 / .04); --drop-over: #eaf4fb;
 }
 * { box-sizing: border-box; scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
 [hidden] { display: none !important; }
@@ -30,7 +47,10 @@ svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
 svg.i.lg { width: 26px; height: 26px; }
 
 /* top bar */
-.bar { flex: 0 0 56px; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 16px; background: var(--bar); border-bottom: 1px solid #0d1117; min-width: 0; }
+.bar {
+  --app: #0a0d12; --text: #e7edf5; --text-2: #9aa7b8; --muted: #7a889c; --line-strong: #2c394b; --cyan: #22b8f0;
+  flex: 0 0 56px; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 16px; background: var(--bar); border-bottom: 1px solid #0d1117; color: var(--text); min-width: 0;
+}
 .logo { display: block; width: 72px; height: 48px; flex: none; }
 .divider { width: 1px; height: 24px; background: var(--line-strong); flex: none; }
 .nofile { color: var(--muted); }
@@ -53,12 +73,17 @@ svg.i.lg { width: 26px; height: 26px; }
 .tool .tile { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--r-sm); background: var(--raised); color: var(--text-2); }
 .tool b { display: block; font-weight: 500; color: var(--text-2); }
 .tool small { display: block; font-size: 12px; line-height: 17px; color: var(--muted); }
-.tool:hover { background: rgb(255 255 255 / .03); }
+.tool:hover { background: var(--hover-soft); }
 .tool.on { background: var(--raised); box-shadow: inset 2px 0 0 var(--blue); }
 .tool.on .tile { background: var(--grad); color: var(--on-accent); }
 .tool.on b { color: var(--text); }
 .tool:has(input:focus-visible) { outline: 2px solid var(--cyan); outline-offset: -2px; }
 .rail-note { margin-top: auto; padding: 0 12px; font-size: 12px; line-height: 17px; color: var(--muted); }
+.theme { display: flex; gap: 2px; margin: 12px 4px 0; padding: 3px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--app); }
+.theme button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font: 500 12px/1 var(--sans); cursor: pointer; }
+.theme button:hover { color: var(--text); }
+.theme button[aria-pressed=true] { background: var(--hover); color: var(--text); }
+.theme svg.i { width: 15px; height: 15px; }
 
 .panel { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
 .panel-head { padding: 20px 20px 12px; }
@@ -85,7 +110,7 @@ svg.i.lg { width: 26px; height: 26px; }
 * + .label { margin-top: 20px; }
 .help { font-size: 12px; line-height: 17px; color: var(--muted); }
 * + .help { margin-top: 6px; }
-.help code, .sub code { padding: 1px 5px; border-radius: 4px; background: var(--raised); color: var(--text-2); font: 11.5px var(--mono); }
+.help code, .sub code { padding: 1px 5px; border-radius: var(--r-sm); background: var(--raised); color: var(--text-2); font: 11.5px var(--mono); }
 input[type=text], input[type=number], select {
   width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
   background-color: var(--app); color: var(--text); font: inherit;
@@ -94,7 +119,7 @@ input::placeholder { color: var(--muted); }
 select { appearance: none; padding-right: 32px; background-image: var(--chev); background-repeat: no-repeat; background-position: right 10px center; background-size: 16px; }
 input.short { width: 120px; }
 input[type=checkbox] {
-  appearance: none; width: 16px; height: 16px; margin: 2px 0 0; flex: none; border: 1px solid var(--line-strong); border-radius: 4px;
+  appearance: none; width: 16px; height: 16px; margin: 2px 0 0; flex: none; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
   background: var(--app) center / 12px no-repeat; cursor: pointer;
 }
 input[type=checkbox]:checked { border-color: var(--blue); background-color: var(--blue); background-image: var(--tick); }
@@ -140,8 +165,8 @@ details[open] summary { margin-bottom: 8px; }
   display: flex; flex-direction: column; align-items: center; gap: 16px; width: min(600px, 100%); padding: 40px 24px 32px;
   border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: var(--panel); text-align: center;
 }
-.drop.over { border-style: solid; border-color: var(--cyan); background: #0f1a24; }
-.upl { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 14px; background: var(--grad); color: var(--on-accent); }
+.drop.over { border-style: solid; border-color: var(--cyan); background: var(--drop-over); }
+.upl { display: grid; place-items: center; width: 56px; height: 56px; border-radius: var(--r-md); background: var(--grad); color: var(--on-accent); }
 .drop h2, .ready h2 { font: 600 20px/28px var(--sans); letter-spacing: -.2px; }
 .sub { max-width: 440px; color: var(--text-2); }
 .pathrow { display: flex; gap: 8px; width: 100%; }
@@ -162,7 +187,7 @@ details[open] summary { margin-bottom: 8px; }
 .result { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
 .rhead { display: flex; align-items: center; gap: 12px; }
 .rhead h2 { font: 600 15px/22px var(--sans); }
-.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; line-height: 17px; white-space: nowrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: var(--r-sm); font-size: 12px; line-height: 17px; white-space: nowrap; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .pill.t-done { color: var(--green); background: rgb(43 213 118 / .14); }
 .pill.t-working { color: var(--cyan); background: rgb(34 184 240 / .14); }
@@ -201,7 +226,8 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
 @media (prefers-reduced-motion: reduce) { .bar-run::after, .pill.t-working::before { animation: none; } }
 @media (max-width: 1180px) {
   .app { grid-template-columns: 76px 420px minmax(0, 1fr); }
-  .rail-label, .rail-note, .tool-text { display: none; }
+  .rail-label, .rail-note, .tool-text, .theme span { display: none; }
+  .theme { flex-direction: column; margin: auto 0 0; }
   .tool { justify-content: center; padding: 10px; }
   .ver { display: none; }
 }
@@ -214,6 +240,7 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
   .tool-text { display: block; }
   .tool small { display: none; }
   .meta, .mini-t, .keys { display: none; }
+  .theme { flex: none; flex-direction: row; align-self: center; margin: 0 0 0 auto; }
   .panel { border-right: 0; }
   .panel-body { overflow: visible; }
   .panel-foot { position: sticky; bottom: 0; z-index: 1; }
@@ -238,6 +265,8 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
 </svg>
 
 <header class="bar">
@@ -278,6 +307,10 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
   <label class="tool" title="Convert"><input type="radio" name="cmd" value="convert"><span class="tile"><svg class="i"><use href="#i-convert"/></svg></span><span class="tool-text"><b>Convert</b><small>Save in another format</small></span></label>
   <label class="tool" title="Watch"><input type="radio" name="cmd" value="watch"><span class="tile"><svg class="i"><use href="#i-watch"/></svg></span><span class="tool-text"><b>Watch</b><small>Follow a growing file</small></span></label>
   <p class="rail-note">Same engine as the command line, so results match exactly.</p>
+  <div class="theme" role="group" aria-label="Colour theme">
+    <button type="button" id="themeLight" aria-pressed="false" title="Light mode"><svg class="i"><use href="#i-sun"/></svg><span>Light</span></button>
+    <button type="button" id="themeDark" aria-pressed="true" title="Dark mode"><svg class="i"><use href="#i-moon"/></svg><span>Dark</span></button>
+  </div>
 </nav>
 
 <section class="panel" aria-labelledby="toolTitle">
@@ -958,6 +991,20 @@ function renderTable(header, rows) {
     el("tbody", {}, ...rows.map((r) => el("tr", {}, ...header.map((_, i) => el("td", { class: numeric[i] ? "num" : null, title: r[i] || null }, r[i] || ""))))));
   $("tableWrap").hidden = false;
 }
+
+// --- theme -------------------------------------------------------------------
+
+const savedTheme = () => { try { return localStorage.getItem("datacom-theme"); } catch { return null; } };
+function setTheme(t, save) {
+  document.documentElement.dataset.theme = t;
+  $("themeLight").setAttribute("aria-pressed", String(t === "light"));
+  $("themeDark").setAttribute("aria-pressed", String(t === "dark"));
+  if (save) try { localStorage.setItem("datacom-theme", t); } catch {}
+}
+$("themeLight").addEventListener("click", () => setTheme("light", true));
+$("themeDark").addEventListener("click", () => setTheme("dark", true));
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", (e) => { if (!savedTheme()) setTheme(e.matches ? "light" : "dark", false); });
+setTheme(document.documentElement.dataset.theme || "dark", false);
 
 showPanels();
 refreshSort();

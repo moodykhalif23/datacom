@@ -41,12 +41,16 @@ NDJSON, XML, Excel, OpenDocument (.ods), Parquet, Avro, gzip, zstd or zip, UTF-8
   -o  write to file instead of stdout          -q      quiet: no row count on stderr
   -monitor  live progress on stderr and a report of every hiccup at the end
   -log FILE append the same report as one JSON line per run (errors included)
+  -manifest FILE  write a JSON record of the run: input and output SHA-256, every rule applied and what it changed
 
 clean / query / watch flags:
   -snake        snake_case headers           -no-types   skip type normalization
   -dedupe       drop duplicate rows          -keep-empty keep all-empty rows
   -fold-case    spell each value of a categorical column the way it is spelled most often (PAID, Paid -> paid)
   -phone 254    country calling code for national phone numbers (0712 345 678 -> +254712345678)
+  -redact LIST  mask personal data: emails, phones, ids, cards or all; matches become [EMAIL], [PHONE], [ID], [CARD]
+  -text a,b     clean these columns as documents: repair garbled characters, strip HTML, NFC Unicode,
+                drop control characters, tidy spacing but keep paragraphs
   -join FILE    left join another file       -on KEY     join key, or "left=right"
   -derive "name = EXPR"   add or overwrite a column; repeatable, e.g. "margin = revenue - cost",
                 "band = if(amount > 1000, high, low)", "yr = year(date)", "status = lower(status)"
@@ -73,11 +77,11 @@ examples:
 
 type opts struct {
 	in, out, format, inFormat, sheet string
-	logFile                          string
+	logFile, manifest                string
 	monitor                          bool
 	quiet, snake, dedupe             bool
 	noTypes, keepEmpty, foldCase     bool
-	phone                            string
+	phone, redact, text              string
 	selectCols, group, agg, sortKey  string
 	join, on                         string
 	limit, top                       int
@@ -134,6 +138,8 @@ func main() {
 	fs.BoolVar(&o.keepEmpty, "keep-empty", false, "")
 	fs.BoolVar(&o.foldCase, "fold-case", false, "")
 	fs.StringVar(&o.phone, "phone", "", "")
+	fs.StringVar(&o.redact, "redact", "", "")
+	fs.StringVar(&o.text, "text", "", "")
 	fs.StringVar(&o.join, "join", "", "")
 	fs.StringVar(&o.on, "on", "", "")
 	fs.Var(&o.derive, "derive", "")
@@ -147,6 +153,7 @@ func main() {
 	fs.BoolVar(&o.jsonReport, "json", false, "")
 	fs.BoolVar(&o.monitor, "monitor", false, "")
 	fs.StringVar(&o.logFile, "log", "", "")
+	fs.StringVar(&o.manifest, "manifest", "", "")
 	fs.DurationVar(&o.every, "every", 10*time.Second, "")
 	fs.DurationVar(&o.idle, "idle", 0, "")
 
@@ -177,7 +184,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, cmd string, o opts) error {
+func run(ctx context.Context, cmd string, o opts) (err error) {
 	switch cmd {
 	case "profile", "clean", "query", "convert", "watch":
 	default:
@@ -185,37 +192,54 @@ func run(ctx context.Context, cmd string, o opts) error {
 	}
 	start := time.Now()
 	mon := o.mon
-	if mon == nil && (o.monitor || o.logFile != "") {
+	if mon == nil && (o.monitor || o.logFile != "" || o.manifest != "") {
 		mon = pipeline.NewMonitor()
 	}
 	if mon != nil {
 		ctx = pipeline.WithMonitor(ctx, mon)
+	}
+	rec := &runRecord{}
+	if o.manifest != "" {
+		rec.ledger = pipeline.NewLedger()
+		ctx = pipeline.WithLedger(ctx, rec.ledger)
+	}
+	stop := make(chan struct{})
+	if mon != nil {
+		defer func() { close(stop); finish(mon, o, start, cmd, rec, err) }()
 	}
 	t, closeIn, err := open(ctx, o, mon, o.in, cmd == "watch")
 	if err != nil {
 		return err
 	}
 	defer closeIn()
-	if mon != nil {
-		stop := make(chan struct{})
-		if o.monitor {
-			go mon.Live(os.Stderr, time.Second, isTerminal(os.Stderr), stop)
-		}
-		defer func() { close(stop); finish(mon, o, start) }()
+	rec.rawHeader = append([]string(nil), t.Header...)
+	if o.monitor {
+		go mon.Live(os.Stderr, time.Second, isTerminal(os.Stderr), stop)
 	}
 
-	var out io.Writer = os.Stdout
+	var base io.Writer = os.Stdout
 	if o.out != "" {
 		f, err := os.Create(o.out)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		out = f
-		if zw := compressedWriter(f, o.out); zw != nil {
-			defer zw.Close()
-			out = zw
+		base = f
+	}
+	var orec *outputRecord
+	if o.manifest != "" {
+		name := o.out
+		if name == "" {
+			name = "-"
 		}
+		orec = &outputRecord{Path: name, hw: pipeline.NewHashWriter(base)}
+		rec.outputs = append(rec.outputs, orec)
+		base = orec.hw
+	}
+	out := base
+	if zw := compressedWriter(base, o.out); zw != nil {
+		defer zw.Close()
+		out = zw
 	}
 	outFmt := pipeline.Format(o.format)
 	if outFmt == "" {
@@ -230,10 +254,17 @@ func run(ctx context.Context, cmd string, o opts) error {
 			outFmt = pipeline.FormatCSV
 		}
 	}
+	if orec != nil {
+		orec.Format = string(outFmt)
+		if cmd == "profile" {
+			orec.Format = "report"
+		}
+	}
 
 	if cmd == "profile" {
 		var schema *pipeline.Schema
 		t, schema = pipeline.Clean(t, pipeline.CleanOptions{SnakeHeaders: o.snake, DropEmpty: true, Types: true})
+		rec.header = t.Header
 		rep := pipeline.Profile(t, schema.Kinds, o.top, 0)
 		if err := t.Err(); err != nil {
 			return err
@@ -246,7 +277,7 @@ func run(ctx context.Context, cmd string, o opts) error {
 	}
 	if cmd != "convert" {
 		var done func() error
-		if t, done, err = shape(ctx, t, o); err != nil {
+		if t, done, err = shape(ctx, t, o, rec); err != nil {
 			return err
 		}
 		defer done()
@@ -262,6 +293,9 @@ func run(ctx context.Context, cmd string, o opts) error {
 		n, err = pipeline.WriteSQL(out, t, sqlTable(o))
 	} else {
 		n, err = pipeline.Write(out, t, outFmt)
+	}
+	if orec != nil {
+		orec.Rows = int64(n)
 	}
 	if err != nil {
 		return err
@@ -353,10 +387,16 @@ func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow
 
 // shape applies the streaming stages: clean, join, derive, where, select.
 // The returned func releases the joined file once the pipeline is done.
-func shape(ctx context.Context, t *pipeline.Table, o opts) (*pipeline.Table, func() error, error) {
+func shape(ctx context.Context, t *pipeline.Table, o opts, rec *runRecord) (*pipeline.Table, func() error, error) {
 	clean := pipeline.CleanOptions{SnakeHeaders: o.snake, Dedupe: o.dedupe, DropEmpty: !o.keepEmpty, Types: !o.noTypes,
-		FoldCase: o.foldCase, PhonePrefix: strings.TrimLeft(o.phone, "+")}
+		FoldCase: o.foldCase, PhonePrefix: strings.TrimLeft(o.phone, "+"), Text: splitList(o.text)}
+	for _, name := range clean.Text {
+		if pipeline.Index(t.Header, name) < 0 && pipeline.Index(snakeAll(t.Header), name) < 0 {
+			return nil, nil, fmt.Errorf("-text: no column %q (columns are %s)", name, strings.Join(t.Header, ", "))
+		}
+	}
 	t, _ = pipeline.Clean(t, clean)
+	rec.header = t.Header
 	done := func() error { return nil }
 	if o.join != "" {
 		// The lookup side is not metered: its rows are not "rows in".
@@ -383,8 +423,17 @@ func shape(ctx context.Context, t *pipeline.Table, o opts) (*pipeline.Table, fun
 		}
 		t = pipeline.Filter(t, conds)
 	}
-	t, err = pipeline.Select(t, splitList(o.selectCols))
-	return t, done, err
+	if t, err = pipeline.Select(t, splitList(o.selectCols)); err != nil {
+		return nil, nil, err
+	}
+	if o.redact != "" {
+		kinds, err := pipeline.ParseRedact(o.redact)
+		if err != nil {
+			return nil, nil, err
+		}
+		t = pipeline.Redact(t, kinds, strings.TrimLeft(o.phone, "+"))
+	}
+	return t, done, nil
 }
 
 // report applies the stages that need a bounded input: group, sort, limit.
@@ -430,6 +479,14 @@ func watch(t *pipeline.Table, o opts, out io.Writer, f pipeline.Format) error {
 	return t.Err()
 }
 
+func snakeAll(h []string) []string {
+	out := make([]string, len(h))
+	for i, s := range h {
+		out[i] = pipeline.SnakeHeader(s)
+	}
+	return out
+}
+
 func splitList(s string) []string {
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -467,9 +524,14 @@ func meter(mon *pipeline.Monitor, r io.Reader) io.Reader {
 
 // finish prints the monitor report and appends it to the JSON log, stamped
 // with when it ran, which build ran it and the exact arguments.
-func finish(mon *pipeline.Monitor, o opts, start time.Time) {
+func finish(mon *pipeline.Monitor, o opts, start time.Time, cmd string, rec *runRecord, runErr error) {
 	rep := mon.Report()
 	rep.Time, rep.Version, rep.Command = start.Format(time.RFC3339), versionString(), os.Args[1:]
+	if o.manifest != "" {
+		if err := writeManifest(o.manifest, cmd, o, rep, rec, start, runErr); err != nil {
+			fmt.Fprintln(os.Stderr, "datacom: manifest:", err)
+		}
+	}
 	if o.onReport != nil {
 		o.onReport(rep)
 	}

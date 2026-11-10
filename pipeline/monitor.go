@@ -24,6 +24,7 @@ type Monitor struct {
 	Padded, Trimmed, Empty, Dupes, Unmatched atomic.Int64
 	mu                                       sync.Mutex
 	bad                                      map[string]*badColumn
+	counts                                   map[string]*atomic.Int64
 	notes                                    []string
 	err                                      error
 }
@@ -36,7 +37,29 @@ type badColumn struct {
 }
 
 func NewMonitor() *Monitor {
-	return &Monitor{start: time.Now(), bad: map[string]*badColumn{}}
+	return &Monitor{start: time.Now(), bad: map[string]*badColumn{}, counts: map[string]*atomic.Int64{}}
+}
+
+// Counter returns the named rule counter, creating it on first use. It is
+// nil on a nil Monitor; bump accepts that, so stages need no checks.
+func (m *Monitor) Counter(name string) *atomic.Int64 {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c := m.counts[name]
+	if c == nil {
+		c = new(atomic.Int64)
+		m.counts[name] = c
+	}
+	return c
+}
+
+func bump(c *atomic.Int64, n int64) {
+	if c != nil && n != 0 {
+		c.Add(n)
+	}
 }
 
 // Meter wraps r so bytes read are counted.
@@ -135,22 +158,23 @@ func commas(n int64) string {
 // RunReport is the summary of one run. Time, Version and Command are filled
 // in by the caller so a log line identifies the run that produced it.
 type RunReport struct {
-	Time      string       `json:"time,omitempty"`
-	Version   string       `json:"version,omitempty"`
-	Command   []string     `json:"command,omitempty"`
-	Seconds   float64      `json:"seconds"`
-	RowsIn    int64        `json:"rows_in"`
-	RowsOut   int64        `json:"rows_out"`
-	Bytes     int64        `json:"bytes_in"`
-	PeakMB    uint64       `json:"peak_mb"`
-	Padded    int64        `json:"rows_padded,omitempty"`
-	Trimmed   int64        `json:"rows_trimmed,omitempty"`
-	Empty     int64        `json:"rows_empty_dropped,omitempty"`
-	Dupes     int64        `json:"rows_duplicate_dropped,omitempty"`
-	Unmatched int64        `json:"join_unmatched,omitempty"`
-	Bad       []*badColumn `json:"untyped_values,omitempty"`
-	Notes     []string     `json:"notes,omitempty"`
-	Error     string       `json:"error,omitempty"`
+	Time      string           `json:"time,omitempty"`
+	Version   string           `json:"version,omitempty"`
+	Command   []string         `json:"command,omitempty"`
+	Seconds   float64          `json:"seconds"`
+	RowsIn    int64            `json:"rows_in"`
+	RowsOut   int64            `json:"rows_out"`
+	Bytes     int64            `json:"bytes_in"`
+	PeakMB    uint64           `json:"peak_mb"`
+	Padded    int64            `json:"rows_padded,omitempty"`
+	Trimmed   int64            `json:"rows_trimmed,omitempty"`
+	Empty     int64            `json:"rows_empty_dropped,omitempty"`
+	Dupes     int64            `json:"rows_duplicate_dropped,omitempty"`
+	Unmatched int64            `json:"join_unmatched,omitempty"`
+	Bad       []*badColumn     `json:"untyped_values,omitempty"`
+	Counts    map[string]int64 `json:"counts,omitempty"`
+	Notes     []string         `json:"notes,omitempty"`
+	Error     string           `json:"error,omitempty"`
 }
 
 func (m *Monitor) Report() RunReport {
@@ -164,6 +188,14 @@ func (m *Monitor) Report() RunReport {
 	}
 	for _, b := range m.bad {
 		r.Bad = append(r.Bad, b)
+	}
+	for name, c := range m.counts {
+		if n := c.Load(); n > 0 {
+			if r.Counts == nil {
+				r.Counts = map[string]int64{}
+			}
+			r.Counts[name] = n
+		}
 	}
 	sort.Slice(r.Bad, func(i, j int) bool { return r.Bad[i].Count > r.Bad[j].Count })
 	if m.err != nil {
@@ -202,9 +234,30 @@ func (r RunReport) WriteText(w io.Writer) {
 	if r.Unmatched > 0 {
 		fmt.Fprintf(w, "  %s rows%s found no join match; their joined columns are empty. Check key spelling and casing.\n", commas(r.Unmatched), pct(r.Unmatched))
 	}
+	if line := maskedLine(r.Counts); line != "" {
+		fmt.Fprintf(w, "  %s\n", line)
+	}
 	for _, n := range r.Notes {
 		fmt.Fprintf(w, "  %s\n", n)
 	}
+}
+
+// maskedLine sums the masked:* counters into one sentence.
+func maskedLine(counts map[string]int64) string {
+	var parts []string
+	for _, k := range redactNames {
+		if n := counts["masked:"+k.single]; n > 0 {
+			noun := k.noun
+			if n != 1 {
+				noun += "s"
+			}
+			parts = append(parts, commas(n)+" "+noun)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "personal data masked: " + strings.Join(parts, ", ") + "."
 }
 
 // WriteJSON appends the report as one JSON line so runs can be collected.

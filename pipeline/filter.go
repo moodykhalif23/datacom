@@ -2,7 +2,9 @@ package pipeline
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Filter keeps rows for which every expression is true.
@@ -10,13 +12,19 @@ func Filter(in *Table, conds []Expr) *Table {
 	if len(conds) == 0 {
 		return in
 	}
+	mon := in.monitor()
+	dropped := make([]*atomic.Int64, len(conds))
+	for i := range conds {
+		dropped[i] = mon.Counter("dropped:where:" + strconv.Itoa(i+1))
+	}
 	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
 	rows:
 		for r := range in.Rows {
-			for _, c := range conds {
+			for i, c := range conds {
 				if !c(r).truthy() {
+					bump(dropped[i], 1)
 					continue rows
 				}
 			}

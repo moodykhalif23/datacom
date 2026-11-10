@@ -11,18 +11,22 @@ import (
 
 // ColumnStats holds the profile of one column.
 type ColumnStats struct {
-	Name     string       `json:"name"`
-	Kind     string       `json:"kind"`
-	Count    int64        `json:"count"`
-	Nulls    int64        `json:"nulls"`
-	NullPct  float64      `json:"null_pct"`
-	Distinct int64        `json:"distinct"` // exact up to the cap, then estimated
-	Min      string       `json:"min,omitempty"`
-	Max      string       `json:"max,omitempty"`
-	Mean     *float64     `json:"mean,omitempty"`
-	StdDev   *float64     `json:"stddev,omitempty"`
-	Top      []ValueCount `json:"top,omitempty"`
+	Name     string           `json:"name"`
+	Kind     string           `json:"kind"`
+	Count    int64            `json:"count"`
+	Nulls    int64            `json:"nulls"`
+	NullPct  float64          `json:"null_pct"`
+	Distinct int64            `json:"distinct"` // exact up to the cap, then estimated
+	Min      string           `json:"min,omitempty"`
+	Max      string           `json:"max,omitempty"`
+	Mean     *float64         `json:"mean,omitempty"`
+	StdDev   *float64         `json:"stddev,omitempty"`
+	Top      []ValueCount     `json:"top,omitempty"`
+	Personal map[string]int64 `json:"personal_data,omitempty"`
 	kind     Kind
+	idCol    bool
+	piiSeen  int64
+	pii      [4]int64
 	mean, m2 float64 // Welford running mean and squared distance
 	minF     float64
 	maxF     float64
@@ -59,7 +63,7 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	rep := &Report{}
 	cols := make([]ColumnStats, len(t.Header))
 	for i, h := range t.Header {
-		cols[i] = ColumnStats{Name: h, seen: map[string]int64{}}
+		cols[i] = ColumnStats{Name: h, seen: map[string]int64{}, idCol: idColumn(h)}
 	}
 	rowHashes := map[uint64]struct{}{}
 	dupCap := int64(distinctCap) * 10 // bounds the exact duplicate scan
@@ -106,6 +110,10 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 				if c.Count == 1 || f > c.maxF {
 					c.maxF = f
 				}
+			}
+			if c.piiSeen < piiSample {
+				c.piiSeen++
+				c.scanPersonal(v)
 			}
 			if c.Count == 1 || v < c.minS {
 				c.minS = v
@@ -171,6 +179,9 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 		if c.NullPct >= 50 {
 			rep.Issues = append(rep.Issues, fmt.Sprintf("%s: %.0f%% missing", c.Name, c.NullPct))
 		}
+		if issue := c.personalIssue(); issue != "" {
+			rep.Issues = append(rep.Issues, issue)
+		}
 		if c.Distinct == 1 && c.Count > 1 {
 			rep.Issues = append(rep.Issues, fmt.Sprintf("%s: constant value %q", c.Name, c.Min))
 		}
@@ -194,6 +205,55 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	}
 	rep.Columns = cols
 	return rep
+}
+
+// piiSample is how many values per column the profile checks for personal data.
+const piiSample = 10_000
+
+func (c *ColumnStats) scanPersonal(v string) {
+	var n [4]int
+	if c.idCol && hasDigit(v) {
+		n[maskID] = 1
+	} else {
+		RedactText(v, RedactAll, "", &n)
+	}
+	for k, m := range n {
+		if m > 0 {
+			c.pii[k]++
+		}
+	}
+}
+
+// personalIssue names the personal data found in the column and the flag
+// that masks it.
+func (c *ColumnStats) personalIssue() string {
+	var kinds, flags []string
+	for k, m := range c.pii {
+		if m == 0 {
+			continue
+		}
+		if c.Personal == nil {
+			c.Personal = map[string]int64{}
+		}
+		c.Personal[redactNames[k].single] = m
+		kinds = append(kinds, commas(m)+" "+redactNames[k].noun+plural(m))
+		flags = append(flags, redactNames[k].plural)
+	}
+	if len(kinds) == 0 {
+		return ""
+	}
+	where := ""
+	if c.piiSeen < c.Count {
+		where = " in the first " + commas(c.piiSeen) + " values"
+	}
+	return fmt.Sprintf("%s: personal data%s, %s (clean -redact %s masks it)", c.Name, where, strings.Join(kinds, ", "), strings.Join(flags, ","))
+}
+
+func plural(n int64) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // duplicates describes the duplicate count and, when the scan stopped early,

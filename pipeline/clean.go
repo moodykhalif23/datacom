@@ -3,6 +3,7 @@ package pipeline
 import (
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -11,9 +12,10 @@ type CleanOptions struct {
 	Dedupe       bool
 	DropEmpty    bool
 	Types        bool
-	FoldCase     bool   // in categorical columns, spell a value the way it is spelled most often
-	PhonePrefix  string // country calling code for national phone numbers, e.g. "254"
-	Sample       int    // rows used to infer column kinds (default 1000)
+	FoldCase     bool     // in categorical columns, spell a value the way it is spelled most often
+	PhonePrefix  string   // country calling code for national phone numbers, e.g. "254"
+	Text         []string // columns cleaned as documents with CleanText instead of typed
+	Sample       int      // rows used to infer column kinds (default 1000)
 }
 
 // Fold tables stop growing at maxFoldKeys distinct values: past that a column
@@ -41,6 +43,13 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 		hdr[i] = h
 	}
 	uniqueHeaders(hdr)
+	textCol := make([]bool, len(hdr))
+	for i := range hdr {
+		for _, name := range o.Text {
+			name = strings.TrimSpace(name)
+			textCol[i] = textCol[i] || strings.EqualFold(name, hdr[i]) || strings.EqualFold(name, strings.TrimSpace(in.Header[i]))
+		}
+	}
 	schema := &Schema{Columns: hdr, Kinds: make([]Kind, len(hdr))}
 	tallies := make([]tally, len(hdr))
 	out, ch := in.child(hdr)
@@ -72,6 +81,9 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 		}
 		for i := range schema.Kinds {
 			schema.Kinds[i] = tallies[i].kind()
+			if textCol[i] {
+				schema.Kinds[i] = KindText
+			}
 		}
 		var folds []map[string]string
 		var folded []int
@@ -79,7 +91,7 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 		if o.FoldCase {
 			folds, folded, foldExample = make([]map[string]string, len(hdr)), make([]int, len(hdr)), make([]string, len(hdr))
 			for i := range hdr {
-				if schema.Kinds[i] == KindText {
+				if schema.Kinds[i] == KindText && !textCol[i] {
 					folds[i] = foldTable(buf, i)
 				}
 			}
@@ -89,6 +101,13 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 			seen = map[uint64]struct{}{}
 		}
 		mon := in.monitor()
+		changed, foldedAll := mon.Counter("changed:types"), mon.Counter("changed:fold-case")
+		textFixed := make([]*atomic.Int64, len(textChangeNames))
+		if len(o.Text) > 0 {
+			for k, n := range textChangeNames {
+				textFixed[k] = mon.Counter(n.name)
+			}
+		}
 		emit := func(r Row) bool {
 			if mon != nil && len(r) != len(hdr) {
 				if len(r) < len(hdr) {
@@ -105,9 +124,23 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 					k = schema.Kinds[i]
 				}
 				raw := r[i]
+				if textCol[i] {
+					var c TextChange
+					r[i], c = CleanText(raw)
+					for k, n := range textChangeNames {
+						if c&n.change != 0 {
+							bump(textFixed[k], 1)
+						}
+					}
+					empty = empty && r[i] == ""
+					continue
+				}
 				var ok bool
 				if r[i], ok = normalizeWith(raw, k, o.PhonePrefix); !ok && mon != nil {
 					mon.Bad(hdr[i], k, raw)
+				}
+				if r[i] != raw && raw != "" {
+					bump(changed, 1)
 				}
 				if folds != nil && folds[i] != nil && r[i] != "" {
 					key := strings.ToLower(r[i])
@@ -118,6 +151,7 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 							}
 							r[i] = c
 							folded[i]++
+							bump(foldedAll, 1)
 						}
 					} else if len(folds[i]) < maxFoldKeys*10 {
 						folds[i][key] = r[i]
