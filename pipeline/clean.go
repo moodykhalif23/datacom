@@ -15,6 +15,7 @@ type CleanOptions struct {
 	FoldCase     bool     // in categorical columns, spell a value the way it is spelled most often
 	PhonePrefix  string   // country calling code for national phone numbers, e.g. "254"
 	Text         []string // columns cleaned as documents with CleanText instead of typed
+	Seen         *SeenSet // dedupe against rows other pipelines have seen
 	Sample       int      // rows used to infer column kinds (default 1000)
 }
 
@@ -96,9 +97,12 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 				}
 			}
 		}
-		var seen map[uint64]struct{}
-		if o.Dedupe {
-			seen = map[uint64]struct{}{}
+		seen := o.Seen
+		if o.Dedupe && seen == nil {
+			seen = NewSeenSet()
+		}
+		if !o.Dedupe {
+			seen = nil
 		}
 		mon := in.monitor()
 		changed, foldedAll := mon.Counter("changed:types"), mon.Counter("changed:fold-case")
@@ -165,15 +169,11 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 				}
 				return true
 			}
-			if seen != nil {
-				h := hashRow(r)
-				if _, dup := seen[h]; dup {
-					if mon != nil {
-						mon.Dupes.Add(1)
-					}
-					return true
+			if seen != nil && !seen.Add(hashRow(r)) {
+				if mon != nil {
+					mon.Dupes.Add(1)
 				}
-				seen[h] = struct{}{}
+				return true
 			}
 			return out.send(ch, r)
 		}

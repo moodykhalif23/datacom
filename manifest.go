@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/moodykhalif23/datacom/pipeline"
@@ -13,12 +16,56 @@ import (
 
 // runRecord gathers what a run's manifest needs while the run is going.
 type runRecord struct {
+	mu        sync.Mutex
 	ledger    *pipeline.Ledger
+	seen      *pipeline.SeenSet
 	outputs   []*outputRecord
 	rawHeader []string
 	header    []string
 	near      *pipeline.NearIndex
 	contam    *pipeline.Contamination
+}
+
+// setHeaders keeps the first input's column names before and after Clean.
+func (rec *runRecord) setHeaders(raw, clean []string) {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.header == nil {
+		rec.rawHeader, rec.header = raw, clean
+	}
+}
+
+func (rec *runRecord) addOutput(o *outputRecord) {
+	rec.mu.Lock()
+	rec.outputs = append(rec.outputs, o)
+	rec.mu.Unlock()
+}
+
+// nearIndex and testSets are built once per run and shared by every part.
+func (rec *runRecord) nearIndex(o opts) (*pipeline.NearIndex, error) {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.near == nil {
+		ix, err := pipeline.NewNearIndex(pipeline.NearDupOptions{Threshold: o.nearDupes, MemoryMB: o.nearMem})
+		if err != nil {
+			return nil, err
+		}
+		rec.near = ix
+	}
+	return rec.near, nil
+}
+
+func (rec *runRecord) testSets(ctx context.Context, o opts) (*pipeline.Contamination, error) {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.contam == nil {
+		c, err := pipeline.LoadTestSets(ctx, splitList(o.decontam), o.decontamN)
+		if err != nil {
+			return nil, err
+		}
+		rec.contam = c
+	}
+	return rec.contam, nil
 }
 
 // cleanNames maps column names given as they appear in the input to the
@@ -134,6 +181,7 @@ func writeManifest(path, cmd string, o opts, rep pipeline.RunReport, rec *runRec
 	for _, out := range rec.outputs {
 		out.SHA256, out.Bytes = out.hw.Sum()
 	}
+	sort.Slice(m.Outputs, func(i, j int) bool { return m.Outputs[i].Path < m.Outputs[j].Path })
 	m.Rules = rules(cmd, o, rep, rec)
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)

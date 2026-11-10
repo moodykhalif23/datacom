@@ -49,7 +49,7 @@ func Write(w io.Writer, t *Table, f Format) (int, error) {
 		err = t.Err()
 	}
 	if mon := t.monitor(); mon != nil {
-		mon.RowsOut.Store(int64(n))
+		mon.RowsOut.Add(int64(n))
 		mon.Fail(err)
 	}
 	if err != nil {

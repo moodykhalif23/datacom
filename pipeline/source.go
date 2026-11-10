@@ -80,6 +80,14 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 		r = os.Stdin
 	case strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://"):
 		r = newRemote(ctx, src)
+	case IsCloud(src):
+		u, sign, err := cloudURL(src)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		rm := newRemote(ctx, u)
+		rm.sign = sign
+		r = rm
 	default:
 		f, err := os.Open(src)
 		if err != nil {

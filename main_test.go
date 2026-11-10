@@ -8,6 +8,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -302,5 +306,109 @@ func TestWatchCSVGrowingSlowly(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPartsAndGlobs(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) { os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644) }
+	write("a.csv", "id,body\n1,the quick brown fox jumps over the lazy dog near the river bank\n2,shared row\n")
+	write("b.csv", "id,body\n3,The quick brown fox jumps over the lazy dog near the river bank!\n2,shared row\n")
+	write("c.csv", "body,id,extra\nrain falls on the hills of the rift valley every april,4,x\n")
+	write("d.csv", "id,body\n5,a fifth document about markets in mombasa and their opening hours\n")
+
+	out, man := filepath.Join(dir, "out")+"/", filepath.Join(dir, "run.json")
+	o := opts{inputs: []string{filepath.Join(dir, "*.csv")}, dedupe: true, text: "body", nearDupes: 0.8, nearMem: 8, out: out, workers: 3, manifest: man, quiet: true}
+	if err := run(context.Background(), "clean", o); err != nil {
+		t.Fatal(err)
+	}
+	parts, _ := filepath.Glob(filepath.Join(dir, "out", "part-*.csv"))
+	if len(parts) != 4 {
+		t.Fatalf("parts %v", parts)
+	}
+	var rows []string
+	for _, p := range parts {
+		b, _ := os.ReadFile(p)
+		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+		rows = append(rows, lines[1:]...)
+	}
+	if len(rows) != 4 || strings.Count(strings.Join(rows, "\n"), "shared row") != 1 || strings.Count(strings.Join(rows, "\n"), "quick brown fox") != 1 {
+		t.Fatalf("rows across parts (want the cross-file duplicate and near-duplicate dropped):\n%s", strings.Join(rows, "\n"))
+	}
+	var m struct {
+		Inputs  []map[string]any `json:"inputs"`
+		Outputs []map[string]any `json:"outputs"`
+		RowsOut float64          `json:"rows_out"`
+	}
+	b, _ := os.ReadFile(man)
+	json.Unmarshal(b, &m)
+	if len(m.Inputs) != 4 || len(m.Outputs) != 4 || m.RowsOut != 4 || m.Outputs[0]["path"] != filepath.Join(dir, "out", "part-00000.csv") {
+		t.Fatalf("manifest inputs %d outputs %d rows %v\n%s", len(m.Inputs), len(m.Outputs), m.RowsOut, b)
+	}
+
+	one := filepath.Join(dir, "one.csv")
+	log := filepath.Join(dir, "runs.jsonl")
+	merged := runCLI(t, "query", opts{inputs: []string{filepath.Join(dir, "*.csv")}, out: one, logFile: log})
+	if !strings.HasPrefix(merged, "id,body\n1,") || !strings.Contains(merged, "4,rain falls") || strings.Count(merged, "\n") != 7 {
+		t.Fatalf("merged:\n%s", merged)
+	}
+	if b, _ := os.ReadFile(log); !strings.Contains(string(b), "columns extra are not in") {
+		t.Fatalf("extra column not noted: %s", b)
+	}
+
+	for _, bad := range []opts{
+		{inputs: []string{filepath.Join(dir, "*.csv")}, group: "id", out: out},
+		{inputs: []string{filepath.Join(dir, "*.parquet")}, out: one},
+	} {
+		bad.quiet = true
+		if err := run(context.Background(), "query", bad); err == nil {
+			t.Errorf("%+v should fail", bad)
+		}
+	}
+	if err := run(context.Background(), "profile", opts{inputs: []string{filepath.Join(dir, "*.csv")}, out: out, quiet: true}); err == nil {
+		t.Error("profile with parts output should fail")
+	}
+}
+
+func TestPartsFromS3(t *testing.T) {
+	objects := map[string]string{"raw/2025/a.jsonl": `{"t":"alpha one"}` + "\n" + `{"t":"alpha two"}` + "\n", "raw/2025/b.jsonl": `{"t":"beta"}` + "\n"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimPrefix(r.URL.Path, "/lake/")
+		if r.URL.Query().Get("list-type") == "2" {
+			fmt.Fprint(w, "<ListBucketResult>")
+			for _, k := range []string{"raw/2025/a.jsonl", "raw/2025/b.jsonl"} {
+				if strings.HasPrefix(k, r.URL.Query().Get("prefix")) {
+					fmt.Fprintf(w, "<Contents><Key>%s</Key><Size>%d</Size></Contents>", k, len(objects[k]))
+				}
+			}
+			fmt.Fprint(w, "</ListBucketResult>")
+			return
+		}
+		io.WriteString(w, objects[key])
+	}))
+	defer srv.Close()
+	t.Setenv("AWS_ENDPOINT_URL", srv.URL)
+	t.Setenv("AWS_ACCESS_KEY_ID", "")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "none"))
+	dir := t.TempDir()
+	man := filepath.Join(dir, "run.json")
+	o := opts{inputs: []string{"s3://lake/raw/**/*.jsonl"}, out: filepath.Join(dir, "clean", "part-*.jsonl.gz"), manifest: man, quiet: true}
+	if err := run(context.Background(), "clean", o); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(filepath.Join(dir, "clean", "part-00000.jsonl.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := gzip.NewReader(f)
+	body, _ := io.ReadAll(zr)
+	f.Close()
+	if string(body) != `{"t":"alpha one"}`+"\n"+`{"t":"alpha two"}`+"\n" {
+		t.Fatalf("part 0 = %q", body)
+	}
+	b, _ := os.ReadFile(man)
+	sum := sha256.Sum256([]byte(objects["raw/2025/b.jsonl"]))
+	if !strings.Contains(string(b), `"source": "s3://lake/raw/2025/b.jsonl"`) || !strings.Contains(string(b), hex.EncodeToString(sum[:])) || strings.Contains(string(b), `"complete": false`) {
+		t.Fatalf("manifest:\n%s", b)
 	}
 }

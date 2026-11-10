@@ -39,6 +39,9 @@ NDJSON, XML, Excel, OpenDocument (.ods), Parquet, Avro, gzip, zstd or zip, UTF-8
       an -o name ending in .gz or .zst is compressed
   -i  input format (default: auto-detect)      -sheet  Excel sheet name or number
   -o  write to file instead of stdout          -q      quiet: no row count on stderr
+      several sources or globs (*, ?, **) are read as one; with -o DIR/ or -o 'DIR/part-*.parquet'
+      each source becomes one part, -workers at a time (all cores), deduplicated against each other
+  sources may be s3://bucket/key, gs://bucket/key or hf://datasets/owner/name/path, with globs
   -monitor  live progress on stderr and a report of every hiccup at the end
   -log FILE append the same report as one JSON line per run (errors included)
   -manifest FILE  write a JSON record of the run: input and output SHA-256, every rule applied and what it changed
@@ -83,6 +86,8 @@ examples:
 
 type opts struct {
 	in, out, format, inFormat, sheet string
+	inputs                           []string
+	workers                          int
 	logFile, manifest                string
 	monitor                          bool
 	quiet, snake, dedupe             bool
@@ -168,6 +173,7 @@ func main() {
 	fs.BoolVar(&o.monitor, "monitor", false, "")
 	fs.StringVar(&o.logFile, "log", "", "")
 	fs.StringVar(&o.manifest, "manifest", "", "")
+	fs.IntVar(&o.workers, "workers", 0, "")
 	fs.DurationVar(&o.every, "every", 10*time.Second, "")
 	fs.DurationVar(&o.idle, "idle", 0, "")
 
@@ -178,6 +184,7 @@ func main() {
 			if o.in == "" {
 				o.in = args[0]
 			}
+			o.inputs = append(o.inputs, args[0])
 			args = args[1:]
 			continue
 		}
@@ -221,15 +228,37 @@ func run(ctx context.Context, cmd string, o opts) (err error) {
 	if mon != nil {
 		defer func() { close(stop); finish(mon, o, start, cmd, rec, err) }()
 	}
-	t, closeIn, err := open(ctx, o, mon, o.in, cmd == "watch")
+	srcs := o.inputs
+	if len(srcs) == 0 {
+		srcs = []string{o.in}
+	}
+	if srcs, err = pipeline.ExpandSources(ctx, srcs); err != nil {
+		return err
+	}
+	o.in = srcs[0]
+	if o.monitor {
+		go mon.Live(os.Stderr, time.Second, isTerminal(os.Stderr), stop)
+	}
+	if partsOutput(o.out) {
+		return runParts(ctx, cmd, o, srcs, mon, rec, start)
+	}
+	var t *pipeline.Table
+	closeIn := func() error { return nil }
+	switch {
+	case len(srcs) > 1 && cmd == "watch":
+		return errors.New("watch follows one file")
+	case len(srcs) > 1:
+		t, err = pipeline.Concat(ctx, srcs, func(ctx context.Context, i int) (*pipeline.Table, func() error, error) {
+			return open(ctx, o, mon, srcs[i], false)
+		})
+	default:
+		t, closeIn, err = open(ctx, o, mon, srcs[0], cmd == "watch")
+	}
 	if err != nil {
 		return err
 	}
 	defer closeIn()
-	rec.rawHeader = append([]string(nil), t.Header...)
-	if o.monitor {
-		go mon.Live(os.Stderr, time.Second, isTerminal(os.Stderr), stop)
-	}
+	raw := append([]string(nil), t.Header...)
 
 	var base io.Writer = os.Stdout
 	if o.out != "" {
@@ -247,7 +276,7 @@ func run(ctx context.Context, cmd string, o opts) (err error) {
 			name = "-"
 		}
 		orec = &outputRecord{Path: name, hw: pipeline.NewHashWriter(base)}
-		rec.outputs = append(rec.outputs, orec)
+		rec.addOutput(orec)
 		base = orec.hw
 	}
 	out := base
@@ -278,7 +307,7 @@ func run(ctx context.Context, cmd string, o opts) (err error) {
 	if cmd == "profile" {
 		var schema *pipeline.Schema
 		t, schema = pipeline.Clean(t, pipeline.CleanOptions{SnakeHeaders: o.snake, DropEmpty: true, Types: true})
-		rec.header = t.Header
+		rec.setHeaders(raw, t.Header)
 		rep := pipeline.Profile(t, schema.Kinds, o.top, 0)
 		if err := t.Err(); err != nil {
 			return err
@@ -403,14 +432,15 @@ func open(ctx context.Context, o opts, mon *pipeline.Monitor, src string, follow
 // The returned func releases the joined file once the pipeline is done.
 func shape(ctx context.Context, t *pipeline.Table, o opts, rec *runRecord) (*pipeline.Table, func() error, error) {
 	clean := pipeline.CleanOptions{SnakeHeaders: o.snake, Dedupe: o.dedupe, DropEmpty: !o.keepEmpty, Types: !o.noTypes,
-		FoldCase: o.foldCase, PhonePrefix: strings.TrimLeft(o.phone, "+"), Text: splitList(o.text)}
+		FoldCase: o.foldCase, PhonePrefix: strings.TrimLeft(o.phone, "+"), Text: splitList(o.text), Seen: rec.seen}
+	raw := append([]string(nil), t.Header...)
 	for _, name := range clean.Text {
 		if pipeline.Index(t.Header, name) < 0 && pipeline.Index(snakeAll(t.Header), name) < 0 {
 			return nil, nil, fmt.Errorf("-text: no column %q (columns are %s)", name, strings.Join(t.Header, ", "))
 		}
 	}
 	t, _ = pipeline.Clean(t, clean)
-	rec.header = t.Header
+	rec.setHeaders(raw, t.Header)
 	done := func() error { return nil }
 	if o.join != "" {
 		// The lookup side is not metered: its rows are not "rows in".
@@ -448,22 +478,20 @@ func shape(ctx context.Context, t *pipeline.Table, o opts, rec *runRecord) (*pip
 		}
 	}
 	if o.decontam != "" {
-		if rec.contam == nil {
-			if rec.contam, err = pipeline.LoadTestSets(pipeline.WithMonitor(ctx, nil), splitList(o.decontam), o.decontamN); err != nil {
-				return nil, nil, err
-			}
+		contam, err := rec.testSets(pipeline.WithMonitor(ctx, nil), o)
+		if err != nil {
+			return nil, nil, err
 		}
-		if t, err = pipeline.Decontaminate(t, rec.contam, textCols); err != nil {
+		if t, err = pipeline.Decontaminate(t, contam, textCols); err != nil {
 			return nil, nil, err
 		}
 	}
 	if o.nearDupes > 0 {
-		if rec.near == nil {
-			if rec.near, err = pipeline.NewNearIndex(pipeline.NearDupOptions{Threshold: o.nearDupes, MemoryMB: o.nearMem}); err != nil {
-				return nil, nil, err
-			}
+		ix, err := rec.nearIndex(o)
+		if err != nil {
+			return nil, nil, err
 		}
-		if t, err = pipeline.NearDedupe(t, rec.near, textCols); err != nil {
+		if t, err = pipeline.NearDedupe(t, ix, textCols); err != nil {
 			return nil, nil, err
 		}
 	}

@@ -20,6 +20,7 @@ type remote struct {
 	skip     int64 // bytes of the current response to discard
 	attempts int
 	done     bool
+	sign     func(*http.Request)
 }
 
 // Retry and timeout settings, as variables so tests can shorten them.
@@ -90,6 +91,9 @@ func (r *remote) connect() error {
 		}
 		if r.offset > 0 {
 			req.Header.Set("Range", "bytes="+strconv.FormatInt(r.offset, 10)+"-")
+		}
+		if r.sign != nil {
+			r.sign(req)
 		}
 		resp, err := r.client.Do(req)
 		if err == nil {

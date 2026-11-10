@@ -98,10 +98,12 @@ func (m *Monitor) Note(format string, args ...any) {
 	m.mu.Unlock()
 }
 
-// Fail records the error that stopped the run, if any.
+// Fail records the first error that stopped the run.
 func (m *Monitor) Fail(err error) {
 	m.mu.Lock()
-	m.err = err
+	if m.err == nil {
+		m.err = err
+	}
 	m.mu.Unlock()
 }
 
