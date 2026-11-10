@@ -58,15 +58,13 @@ func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 		queue := make(chan *piece, workers*2)
 		var wg sync.WaitGroup
 		for range workers {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for p := range work {
 					p.rows, p.err = parseCSV(t.run.ctx, p.b, comma, trim)
 					src.recycle(p.b)
 					close(p.done)
 				}
-			}()
+			})
 		}
 		defer wg.Wait()
 		go func() {

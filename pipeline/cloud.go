@@ -145,6 +145,9 @@ func sharedCredentials() (key, secret, token string) {
 			token = strings.TrimSpace(v)
 		}
 	}
+	if sc.Err() != nil {
+		return "", "", ""
+	}
 	return
 }
 
@@ -189,7 +192,10 @@ func signS3(r *http.Request, key, secret, token, region, payload string, t time.
 	sort.Strings(names)
 	var canon strings.Builder
 	for _, k := range names {
-		canon.WriteString(k + ":" + headers[k] + "\n")
+		canon.WriteString(k)
+		canon.WriteByte(':')
+		canon.WriteString(headers[k])
+		canon.WriteByte('\n')
 	}
 	signed := strings.Join(names, ";")
 	q := r.URL.Query()
