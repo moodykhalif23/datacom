@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,31 +67,46 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	for i, h := range t.Header {
 		cols[i] = ColumnStats{Name: h, seen: map[string]int64{}, idCol: idColumn(h)}
 	}
-	workers := min(runtime.GOMAXPROCS(0), len(cols))
-	if n, ok := t.run.ctx.Value(parallelKey{}).(int); ok && n > 0 {
-		workers = min(workers, n)
-	}
-	workers = max(workers, 1)
+	workers := max(min(parallelism(t.run.ctx), len(cols)), 1)
 	dupCap := int64(distinctCap) * 10 // bounds the exact duplicate scan
-	feeds := make([]chan []Row, workers+1)
+	hashes := map[uint64]struct{}{}
+	dup := func(r Row) {
+		if rep.DupChecked == dupCap {
+			return
+		}
+		rep.DupChecked++
+		h := hashRow(r)
+		if _, seen := hashes[h]; seen {
+			rep.Duplicate++
+		} else {
+			hashes[h] = struct{}{}
+		}
+	}
+	cells := func(w int, r Row) {
+		for i := w; i < len(cols); i += workers {
+			cols[i].add(r.Get(i), distinctCap)
+		}
+	}
+	var feeds []chan []Row
 	var wg sync.WaitGroup
-	for w := range feeds {
-		feeds[w] = make(chan []Row, 4)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if w == workers {
-				rep.scanDuplicates(feeds[w], dupCap)
-				return
-			}
-			for b := range feeds[w] {
-				for _, r := range b {
-					for i := w; i < len(cols); i += workers {
-						cols[i].add(r.Get(i), distinctCap)
+	if workers > 1 {
+		feeds = make([]chan []Row, workers+1)
+		for w := range feeds {
+			feeds[w] = make(chan []Row, 4)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for b := range feeds[w] {
+					for _, r := range b {
+						if w == workers {
+							dup(r)
+						} else {
+							cells(w, r)
+						}
 					}
 				}
-			}
-		}()
+			}()
+		}
 	}
 	batch := make([]Row, 0, profileBatch)
 	for r := range t.Rows {
@@ -105,6 +119,11 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 					cols[i].kind, cols[i].fixed = kinds[i], true
 				}
 			}
+		}
+		if feeds == nil {
+			dup(r)
+			cells(0, r)
+			continue
 		}
 		if batch = append(batch, r); len(batch) == profileBatch {
 			for _, f := range feeds {
@@ -193,24 +212,6 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 }
 
 const profileBatch = 256
-
-func (rep *Report) scanDuplicates(feed <-chan []Row, limit int64) {
-	hashes := map[uint64]struct{}{}
-	for b := range feed {
-		for _, r := range b {
-			if rep.DupChecked == limit {
-				break
-			}
-			rep.DupChecked++
-			h := hashRow(r)
-			if _, dup := hashes[h]; dup {
-				rep.Duplicate++
-			} else {
-				hashes[h] = struct{}{}
-			}
-		}
-	}
-}
 
 func (c *ColumnStats) add(v string, distinctCap int) {
 	v = strings.TrimSpace(v)

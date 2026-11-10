@@ -13,6 +13,16 @@ func WithParallelism(ctx context.Context, n int) context.Context {
 	return context.WithValue(ctx, parallelKey{}, n)
 }
 
+// parallelism is how many cores a stage may use: all of them, or fewer when
+// the context says so. With one, stages run in a single goroutine.
+func parallelism(ctx context.Context) int {
+	n := runtime.GOMAXPROCS(0)
+	if p, ok := ctx.Value(parallelKey{}).(int); ok && p > 0 {
+		n = min(n, p)
+	}
+	return n
+}
+
 const (
 	batchRows  = 64
 	batchFlush = 20 * time.Millisecond
@@ -26,9 +36,19 @@ func ordered[T any](in *Table, head []Row, f func(Row) T, emit func(Row, T) bool
 		res  []T
 		done chan struct{}
 	}
-	workers := runtime.GOMAXPROCS(0)
-	if n, ok := in.run.ctx.Value(parallelKey{}).(int); ok && n > 0 {
-		workers = min(workers, n)
+	workers := parallelism(in.run.ctx)
+	if workers == 1 {
+		for _, r := range head {
+			if !emit(r, f(r)) {
+				return
+			}
+		}
+		for r := range in.Rows {
+			if !emit(r, f(r)) {
+				return
+			}
+		}
+		return
 	}
 	work := make(chan *batch, workers)
 	queue := make(chan *batch, workers*2)

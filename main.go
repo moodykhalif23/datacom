@@ -193,7 +193,7 @@ func main() {
 	}
 
 	// Ctrl-C or a closed pipe stops every stage cleanly.
-	signal.Ignore(syscall.SIGPIPE)
+	ignoreSIGPIPE()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, cmd, o); err != nil {
@@ -238,6 +238,9 @@ func run(ctx context.Context, cmd string, o opts) (err error) {
 	o.in = srcs[0]
 	if o.monitor {
 		go mon.Live(os.Stderr, time.Second, isTerminal(os.Stderr), stop)
+	}
+	if mon != nil && liveHook != nil {
+		go liveHook(mon, stop)
 	}
 	if partsOutput(o.out) {
 		return runParts(ctx, cmd, o, srcs, mon, rec, start)
@@ -574,6 +577,10 @@ func isTerminal(f *os.File) bool {
 	fi, err := f.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
+
+// liveHook, when set, follows a run's monitor until stop closes. The browser
+// build uses it to report progress to the page.
+var liveHook func(*pipeline.Monitor, <-chan struct{})
 
 // version is set by -ldflags "-X main.version=v1.2.3"; otherwise the module
 // version from go install, or "dev".

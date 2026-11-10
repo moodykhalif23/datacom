@@ -6,7 +6,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"runtime"
 	"strings"
 	"sync"
 	"unicode"
@@ -16,6 +15,9 @@ import (
 func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 	// Trimming a tab delimiter would merge empty cells in TSV.
 	trim := comma != '\t'
+	if parallelism(ctx) == 1 {
+		return readCSVSerial(ctx, r, comma, trim)
+	}
 	src := &csvPieces{r: r, s: csvSplit{comma: byte(comma), trim: trim}}
 	first, err := src.next(1)
 	var hdr []string
@@ -50,10 +52,7 @@ func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 			err  error
 			done chan struct{}
 		}
-		workers := runtime.GOMAXPROCS(0)
-		if n, ok := ctx.Value(parallelKey{}).(int); ok && n > 0 {
-			workers = min(workers, n)
-		}
+		workers := parallelism(ctx)
 		work := make(chan *piece, workers)
 		queue := make(chan *piece, workers*2)
 		var wg sync.WaitGroup
@@ -102,12 +101,49 @@ func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 }
 
 // parseCSV gives up early once ctx is done; the rows are dropped then anyway.
-func parseCSV(ctx context.Context, b []byte, comma rune, trim bool) ([]Row, error) {
-	cr := csv.NewReader(bytes.NewReader(b))
+func readCSVSerial(ctx context.Context, r io.Reader, comma rune, trim bool) *Table {
+	cr := newCSVReader(r, comma, trim)
+	hdr, err := cr.Read()
+	if len(hdr) > 0 {
+		hdr[0] = strings.TrimPrefix(hdr[0], "\uFEFF")
+	}
+	t, ch := newRoot(ctx, hdr)
+	if err != nil {
+		if err != io.EOF {
+			t.fail(fmt.Errorf("read header: %w", err))
+		}
+		close(ch)
+		return t
+	}
+	go func() {
+		defer close(ch)
+		for {
+			rec, err := cr.Read()
+			if err != nil {
+				if err != io.EOF {
+					t.fail(err)
+				}
+				return
+			}
+			if !t.send(ch, rec) {
+				return
+			}
+		}
+	}()
+	return t
+}
+
+func newCSVReader(r io.Reader, comma rune, trim bool) *csv.Reader {
+	cr := csv.NewReader(r)
 	cr.FieldsPerRecord = -1
 	cr.LazyQuotes = true
 	cr.TrimLeadingSpace = trim
 	cr.Comma = comma
+	return cr
+}
+
+func parseCSV(ctx context.Context, b []byte, comma rune, trim bool) ([]Row, error) {
+	cr := newCSVReader(bytes.NewReader(b), comma, trim)
 	var rows []Row
 	for {
 		rec, err := cr.Read()

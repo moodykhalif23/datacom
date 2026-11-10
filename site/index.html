@@ -30,6 +30,8 @@ a:hover { text-decoration: underline; }
 .links svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .btn { display: block; width: 150px; margin-top: 48px; padding: 12px 0; border-radius: 3px; background: var(--blue); color: #fff; font-size: 20px; font-weight: 500; text-align: center; }
 .btn:hover { background: var(--blue-hover); text-decoration: none; }
+.btn.try { margin-top: 16px; background: none; border: 1px solid var(--blue); color: var(--link); padding: 11px 0; }
+.btn.try:hover { background: rgb(74 159 224 / .08); }
 .btn.alt { margin-top: 44px; background: var(--grey); }
 .btn.alt:hover { background: var(--grey-hover); }
 
@@ -53,7 +55,7 @@ footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
   .name { flex: 1 1 140px; margin: 0; }
   .links { display: flex; flex-wrap: wrap; gap: 8px 20px; width: 100%; margin: 12px 0 0; }
   .links li + li { margin: 0; }
-  .btn, .btn.alt { width: auto; flex: 1 1 140px; margin: 12px 0 0; }
+  .btn, .btn.alt, .btn.try { width: auto; flex: 1 1 140px; margin: 12px 0 0; }
   main { padding-top: 40px; }
   h1 { font-size: 26px; }
   body { font-size: 17px; }
@@ -72,6 +74,7 @@ footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
       <li><a href="https://github.com/moodykhalif23/datacom/blob/main/CHANGELOG.md"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>Changelog</a></li>
     </ul>
     <a class="btn" href="https://github.com/moodykhalif23/datacom/releases/latest">Download</a>
+    <a class="btn try" href="https://huggingface.co/spaces/CastroFid2/datacom">Try it online</a>
     <a class="btn alt" href="https://github.com/sponsors/moodykhalif23">Sponsor</a>
   </aside>
 
@@ -81,7 +84,7 @@ footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
     <p>It is one small program with nothing else to install, and it runs on your own computer. Files larger than memory stream straight through: on an eight-thread machine it cleans ten million messy rows from a gzipped file in about ten seconds, using 35 MB. The terminal, Python and the browser all drive the same engine, so results match exactly.</p>
 
     <img class="shot" src="/assets/screenshot.png" alt="The datacom browser interface after a clean: options on the left, a summary of what changed and the cleaned rows with emails masked on the right" width="2880" height="1800">
-    <p class="caption"><code>datacom ui</code> opens the same tools in your browser, for colleagues who do not use a terminal.</p>
+    <p class="caption"><code>datacom ui</code> opens the same tools in your browser, for colleagues who do not use a terminal. <a href="https://huggingface.co/spaces/CastroFid2/datacom">Try them online</a>: the engine runs inside the page, so your file is never uploaded.</p>
 
     <p>datacom has what you would expect from a data cleaner:</p>
     <ul class="features">

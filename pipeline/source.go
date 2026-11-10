@@ -121,7 +121,7 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 			return f, rf, closeFn, nil // xlsx and parquet need the seekable file itself
 		}
 	}
-	br, ra, err := decompress(r, false, true)
+	br, ra, err := decompress(r, false, parallelism(ctx) > 1)
 	if err != nil {
 		closeFn()
 		return nil, "", nil, err
