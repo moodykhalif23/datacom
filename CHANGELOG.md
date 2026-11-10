@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0
 
 - `-redact emails,phones,ids,cards` masks personal data as `[EMAIL]`, `[PHONE]`, `[ID]` and `[CARD]`. ID numbers are recognised by format and check digit (US SSN, UK National Insurance, Kenyan KRA PIN, South African ID, Aadhaar), card numbers by the Luhn check and issuer prefix, and columns named like `national_id` or `phone` are masked whole. `profile` lists the columns that hold personal data.
 - `-manifest run.json` writes a record of every run, failed ones included: the SHA-256 and size of each input and output, the command and build, and each rule applied with the rows or values it dropped or changed, including each `-where` condition.
@@ -13,6 +13,7 @@
 - Fixed: parts written at the same time could each keep a copy of the same near-duplicate, because the shared index checked and inserted in two steps.
 - Fixed: an email followed by a dot or hyphen and digits, as in `a@b.com.2025`, was left unmasked, and masking the digits made a second pass mask it. Internationalized domains such as `.xn--p1ai` are now recognised.
 - `site/` holds a one-page website for Vercel: import the repository, set the root directory to `site`, and deploy with no build step.
+- `examples/huggingface-space` is a Gradio demo for a Hugging Face Space that summarizes or cleans an uploaded file, and `examples/kaggle/datacom-demo.ipynb` is a notebook that cleans a messy export and a small training corpus with `pip install datacom`.
 - The browser interface does everything the command line does: a Text tab for document cleaning, quality rules, near-duplicates and test sets; several files, patterns and `s3://`, `gs://` or `hf://` sources read as one; saving parts into a folder with a set number of files at once; and a run log. It now opens in light mode, with dark one click away.
 - `pip install datacom`: platform wheels bundle the binary with a Python API whose `clean`, `query` and `convert` return the run manifest. `tools/wheels.py` builds them; the release workflow publishes them to PyPI.
 - The browser interface masks personal data, offers each run's record for download, and has a light theme beside the dark one.
