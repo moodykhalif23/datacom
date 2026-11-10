@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -342,42 +341,6 @@ func Read(ctx context.Context, r io.Reader, f Format) *Table {
 	t, ch := newRoot(ctx, nil)
 	t.fail(fmt.Errorf("unsupported input format %q", f))
 	close(ch)
-	return t
-}
-
-func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
-	cr := csv.NewReader(r)
-	cr.FieldsPerRecord = -1
-	cr.LazyQuotes = true
-	cr.TrimLeadingSpace = true
-	cr.Comma = comma
-	hdr, err := cr.Read()
-	if len(hdr) > 0 {
-		hdr[0] = strings.TrimPrefix(hdr[0], "\uFEFF")
-	}
-	t, ch := newRoot(ctx, hdr)
-	if err != nil {
-		if err != io.EOF {
-			t.fail(fmt.Errorf("read header: %w", err))
-		}
-		close(ch)
-		return t
-	}
-	go func() {
-		defer close(ch)
-		for {
-			rec, err := cr.Read()
-			if err != nil {
-				if err != io.EOF {
-					t.fail(err)
-				}
-				return
-			}
-			if !t.send(ch, rec) {
-				return
-			}
-		}
-	}()
 	return t
 }
 
