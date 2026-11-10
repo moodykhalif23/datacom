@@ -137,7 +137,7 @@ The checksums match `sha256sum`, so an auditor can check that a delivered file i
 
 ### Text and training data
 
-Name the text columns with `-text`, then add the steps you need:
+`-text` names the document columns, and the other flags work on those columns. A typical run over a crawl export looks like this:
 
 ```sh
 datacom clean crawl.jsonl.gz -text body -quality default -decontam evals/mmlu.jsonl \
