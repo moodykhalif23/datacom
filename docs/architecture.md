@@ -36,18 +36,22 @@ flowchart LR
     Decoders --> Raw["Table: header + row channel"]
 
     subgraph Processing["Processing stages, added as requested"]
-        Clean["Clean<br/>headers, types, empty rows, dedupe"]
+        Clean["Clean<br/>headers, types, -text documents,<br/>empty rows, dedupe"]
         Join["Left join<br/>right side held in memory"]
         Derive["Derive columns"]
         Filter["Where filters"]
+        Quality["Quality rules<br/>parallel"]
+        Decontam["Test-set overlap<br/>parallel"]
+        Near["Near-duplicates<br/>fixed-size MinHash index"]
         Select["Select / rename columns"]
+        Redact["Mask personal data<br/>parallel"]
         Aggregate["Group and aggregate<br/>memory per group"]
         Sort["Sort<br/>buffers rows"]
         Limit["Limit"]
     end
-    Raw --> Clean --> Join --> Derive --> Filter --> Select
-    Select --> Aggregate --> Sort --> Limit
-    Select -. stages not requested are skipped .-> Limit
+    Raw --> Clean --> Join --> Derive --> Filter --> Quality --> Decontam --> Near --> Select --> Redact
+    Redact --> Aggregate --> Sort --> Limit
+    Redact -. stages not requested are skipped .-> Limit
 
     Profile["profile: dataset summary"]
     Windows["watch: split into time windows"]
@@ -181,3 +185,27 @@ carries a token minted at startup, so another tab cannot drive the server.
   text and are shown as written.
 - **Cleanup.** Ctrl-C in the terminal cancels every job, waits for their files
   to close, and removes the temporary folder.
+
+## Many sources, parts and the run record
+
+- **Sources.** Globs over local folders, `s3://`, `gs://` and `hf://` are
+  expanded by listing before the run starts. Cloud objects are read through
+  the same resumable HTTP reader as URLs, with each request signed (SigV4
+  for S3, a bearer token for GCS and the Hub).
+- **One output.** Several sources are read in order as one table by
+  `Concat`, which opens each under its own context so a `-limit` or an
+  error stops the source being read.
+- **Parts.** With `-o out/`, every source runs its own pipeline into its own
+  part, `-workers` at a time. The parts share one exact-duplicate set, one
+  near-duplicate index and one loaded test set, so deduplication is global.
+  Each part's parallel stages get a share of the cores rather than all of
+  them.
+- **Parallel stages.** Quality, test-set overlap, near-duplicate signatures
+  and masking run their costly work in batches of 64 rows on every core and
+  hand results on in input order, so output matches a single-threaded run.
+  A partial batch is flushed after 20 ms so live inputs are not held back.
+- **Run record.** With `-manifest`, a ledger in the context records each
+  source as it is opened: local files are hashed whole by a goroutine of
+  their own, streams as they are read. Outputs are hashed through the writer
+  after compression. When the run ends, the ledger, the monitor's per-rule
+  counters and the options become the manifest.

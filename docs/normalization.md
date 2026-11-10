@@ -143,6 +143,32 @@ reports how many values were respelled in each column.
   three in a million.
 - Row order is preserved unless you `-sort`.
 
+## Text columns
+
+Columns named with `-text` are documents, not values, and are cleaned
+differently:
+
+| change | before | after |
+| --- | --- | --- |
+| text garbled by a wrong decoding | `CafÃ© donâ€™t` | `Café don’t` |
+| bytes that are not UTF-8, read as Windows-1252 | `caf\xe9` | `café` |
+| HTML reduced to its text | `<p>Hello <b>world</b></p><script>t()</script>` | `Hello world` |
+| entities decoded | `Tom &amp; Jerry` | `Tom & Jerry` |
+| Unicode put in NFC form | `e` + combining accent | `é` |
+| control and zero-width characters removed | `a\u200bb` | `ab` |
+| runs of spaces and blank lines tidied | `one   two\n\n\n\nthree` | `one two\n\nthree` |
+
+Line breaks, paragraphs, tabs and indentation are kept. Genuine accented text
+such as `crème brûlée` and text with `<` and `>` that is not HTML are left
+alone. Each change is counted per document in `-monitor` and the manifest.
+
+## Personal data
+
+`-redact` masks emails, phone numbers, ID numbers and card numbers; see the
+[README](../README.md#personal-data) for what each kind matches. Masked
+values become `[EMAIL]`, `[PHONE]`, `[ID]` and `[CARD]`, and masking a file
+twice gives the same result as masking it once.
+
 ## Turning it off
 
 | change | switch |
@@ -154,6 +180,8 @@ reports how many values were respelled in each column.
 | international phone numbers | leave out `-phone` |
 | respelling categorical values | leave out `-fold-case` |
 | any cleaning at all | use `convert` |
+| document cleaning of a column | leave it out of `-text` |
+| masking | leave out `-redact` |
 
 Missing-value markers, header trimming and whitespace collapsing cannot be
 switched off; if a value must survive byte-for-byte, use `convert`.

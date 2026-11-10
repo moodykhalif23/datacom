@@ -18,6 +18,11 @@
 - **Answers questions** with filters, derived columns, joins, select, group-by, aggregates and sort, all driven by one small expression language.
 - **Watches live data.** `watch` follows a growing file or stream and prints a fresh report every window, so you can see trends as they happen.
 - **Has a point-and-click version.** `datacom ui` opens the same five actions as plain forms in your browser, for colleagues who do not use a terminal.
+- **Prepares text for AI training.** `-text` repairs garbled characters, strips HTML, normalizes Unicode and keeps paragraphs; `-quality` applies the Gopher rules, `-decontam` drops documents that overlap a test set, and `-near-dupes` removes near-duplicates in a fixed amount of memory. Each rule's drops are counted.
+- **Masks personal data.** `-redact` replaces emails, phone numbers, ID numbers and card numbers with `[EMAIL]`, `[PHONE]`, `[ID]` and `[CARD]`, and `profile` warns about columns that hold them.
+- **Records every run.** `-manifest run.json` writes the SHA-256 of every input and output, every rule applied and how many rows or values each one dropped or changed.
+- **Scales out.** Sources can be globs over local folders, `s3://`, `gs://` and `hf://datasets/...`; `-o out/` writes one part per source on all cores, deduplicated across parts.
+- **Works from Python.** `pip install datacom` bundles the binary and returns profiles and manifests as dicts.
 - **Profiles** any dataset in one readable report: types, missing values, distinct counts, min / max / mean, top values, and data-quality issues. The duplicate count covers the first million rows and says so when the file is longer; `clean -dedupe` counts them all.
 
 ## Install
@@ -31,6 +36,8 @@ gh attestation verify ~/.local/bin/datacom --owner moodykhalif23  # optional: pr
 ```
 
 On Windows, download the `.exe`, rename it to `datacom.exe` and put it in a folder on your PATH. On macOS use the `darwin-arm64` file for Apple silicon.
+
+**From Python.** `pip install datacom` installs the binary for your platform with a thin Python API; see [python/README.md](python/README.md).
 
 **From source.**
 
@@ -51,7 +58,6 @@ datacom ui
 
 It opens `http://127.0.0.1:7878`
 
-- **Workspace.** Drop a file anywhere on the page, choose one, or type a path or URL. After a run it shows a status, summary cards, any findings in plain language, a preview where only the table scrolls, and a Download button.
 
 Filters, totals and sorting are built from menus of the file's actual columns, so nobody has to learn the expression language, though a box for typing conditions by hand is there for those who do. Ctrl+Enter runs the current tool.
 
@@ -106,6 +112,71 @@ Parquet files are read row group by row group and written as Snappy-compressed r
 
 Add `-monitor` to any command for a live line on stderr (rows, MB read, throughput, memory) and, at the end, a plain report of every hiccup: values that could not be typed per column with examples, rows padded or trimmed, empty and duplicate rows dropped, join rows without a match, and stages that had to buffer. Each finding says what to do about it. Add `-log runs.jsonl` to append the same report as one JSON line per run, errors included, so problems across many files or a scheduled job can be reviewed later. `datacom version` prints the build for bug reports. The monitor costs a few percent of throughput and nothing when off.
 
+### Personal data
+
+`-redact emails,phones,ids,cards` (or `-redact all`) masks personal data in every cell before it is written:
+
+- **Emails** become `[EMAIL]`.
+- **Phone numbers** become `[PHONE]`: international numbers, national ones with a leading 0, and those starting with the `-phone` country code.
+- **ID numbers** become `[ID]`: US Social Security numbers, UK National Insurance numbers, Kenyan KRA PINs, South African ID numbers and Indian Aadhaar numbers, each checked against its format and check digit.
+- **Card numbers** become `[CARD]` when they pass the Luhn check and start like a real card network's numbers.
+
+A column named like `national_id`, `passport_no`, `phone` or `mobile` is masked whole. Masking runs last, so filters and joins still see the real values. `-monitor`, `-log` and `-manifest` report how many of each were masked, and `profile` names the columns that hold personal data and the flag that masks them.
+
+Amounts, dates, times, IP addresses, invoice codes and version numbers are left alone. Masking errs on the side of masking: a long number written like a phone number, such as `125 000 000`, is masked too.
+
+### Run manifest
+
+`-manifest run.json` writes one JSON file per run, failed runs included:
+
+- **Inputs** with their size and SHA-256. Local files are hashed whole, even when `-limit` stops reading early. Streams and cloud objects are hashed as they are read, and say whether they were read to the end.
+- **Outputs** with their format, row count, size and SHA-256 of the bytes on disk, after any compression. Each part of a parts output is listed.
+- **Rules** in pipeline order, each with what it dropped or changed: type normalization, header renames, padded rows, empty and duplicate rows, respelled values, each `-where` condition, text repairs, each quality rule, each test set, near-duplicates and masked values.
+
+The checksums match `sha256sum`, so an auditor can check that a delivered file is the one a run produced. See [docs/operations.md](docs/operations.md).
+
+### Text and training data
+
+Name the text columns with `-text`, then add the steps you need:
+
+```sh
+datacom clean crawl.jsonl.gz -text body -quality default -decontam evals/mmlu.jsonl \
+              -near-dupes 0.8 -redact all -o clean.parquet -manifest run.json
+```
+
+- **`-text body,title`** cleans those columns as documents. It repairs text garbled by a wrong decoding, so `CafÃ©` becomes `Café` and garbled Cyrillic or CJK is restored too. Bytes that are not UTF-8 are read as Windows-1252. It strips HTML tags, scripts and styles and decodes entities, puts Unicode in NFC form, and removes control and zero-width characters. Spacing is tidied while paragraphs and code indentation are kept. Cleaning clean text changes nothing.
+- **`-quality default`** drops documents by the heuristics of the Gopher paper: word count, mean word length, symbols, bullet and ellipsis lines, alphabetic words and repeated lines. Change any rule, for example `-quality min-words=20,stopwords=2`. The English stop-word rule is off unless asked for, so other languages are not dropped. Each drop counts under the first rule it broke.
+- **`-decontam tests.jsonl,other.parquet`** drops documents that share a 13-word sequence with any field of any test-set row. Words are compared case-blind and punctuation is ignored. Set the length with `-decontam-n`. Test fields under 8 words are skipped, so one-word answers do not empty the corpus. Drops are counted per test set.
+- **`-near-dupes 0.8`** drops documents whose five-word shingles overlap an earlier document's by about that Jaccard similarity. It uses MinHash with LSH bands chosen for the threshold, in a fixed index of `-near-mem` MB (256 by default). When the index fills, older entries are overwritten and the report says so, so memory never grows. The first copy seen is kept.
+
+On a generated corpus of 200,000 web-style documents, every planted problem was caught, and the leaked test questions that survived had been edited so that no 13-word sequence still matched:
+
+| planted | caught |
+| --- | --- |
+| 5,001 spam stubs | 5,001 dropped by min-words |
+| 4,067 documents quoting a test question | 4,060 dropped |
+| HTML pages, garbled text, emails and phones | none left in the output |
+
+The costly steps run on every core while keeping the input order, so the output is the same as a single-threaded run.
+
+### Cloud storage and parallel parts
+
+Sources can be any number of paths, URLs or globs, mixed:
+
+```sh
+datacom clean 's3://lake/raw/2026-11/**/*.jsonl.gz' -text body -near-dupes 0.8 -o 'clean/part-*.parquet' -workers 16
+datacom profile 'hf://datasets/owner/name/data/*.parquet'
+datacom query 'gs://bucket/exports/*.csv' -where "status == failed" -o failed.csv
+```
+
+- **S3** uses `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`, or `~/.aws/credentials` with `AWS_PROFILE`, and `AWS_REGION`. Requests are signed with SigV4. Public buckets need no credentials. `AWS_ENDPOINT_URL` points it at MinIO, R2 or another S3-compatible store.
+- **Google Cloud Storage** uses `GOOGLE_OAUTH_ACCESS_TOKEN`, for example from `gcloud auth print-access-token`. `STORAGE_EMULATOR_HOST` points it at an emulator.
+- **Hugging Face Hub** paths look like `hf://datasets/owner/name[@revision]/path`, use `HF_TOKEN` for private repos, and honour `HF_ENDPOINT`.
+
+Globs use `*`, `?`, `[...]` and `**` for any depth, and are expanded by listing the bucket, the repo or the folder. Downloads retry and resume like any URL.
+
+Several sources with one output are read in order as one stream. Later files are matched to the first by column name; a missing column is left empty and extra ones are noted. With `-o out/` or `-o 'out/part-*.jsonl.gz'`, each source becomes one part, `-workers` at a time (all cores by default). `-dedupe` and `-near-dupes` still compare across all parts. Which copy of a duplicate survives depends on which part reaches it first, so use one output when the result must be the same on every run. Group, sort and limit need one output.
+
 ### Aggregates
 
 `-agg "count, sum(x), avg(x), min(x), max(x), distinct(x), first(x), last(x)"`. Add `:alias` to name a column.
@@ -116,16 +187,30 @@ Memory grows with the number of groups, not the number of rows.
 ```go
 import "github.com/moodykhalif23/datacom/pipeline"
 
-r, format, closeFn, _ := pipeline.Open("big.csv.gz", pipeline.FormatAuto)
+ctx := context.Background()
+r, format, closeFn, _ := pipeline.Open(ctx, "big.csv.gz", pipeline.FormatAuto)
 defer closeFn()
-t := pipeline.Read(r, format)
+t := pipeline.Read(ctx, r, format)
 t, schema := pipeline.Clean(t, pipeline.CleanOptions{SnakeHeaders: true, Dedupe: true, Types: true})
-cond, _ := pipeline.ParseCond(t.Header, "amount > 1000")
-t = pipeline.Filter(t, []*pipeline.Cond{cond})
+cond, _ := pipeline.Compile(t.Header, "amount > 1000")
+t = pipeline.Filter(t, []pipeline.Expr{cond})
+t = pipeline.Redact(t, pipeline.RedactAll, "254")
 pipeline.Write(os.Stdout, t, pipeline.FormatNDJSON)
 ```
 
 Every stage is a goroutine connected by a channel, so a pipeline of any length still uses constant memory per row.
+
+## Python
+
+```python
+import datacom
+
+report = datacom.profile("sales.xlsx")
+manifest = datacom.clean("raw.csv", "clean.parquet", snake=True, dedupe=True, redact="all")
+print(manifest["rows_out"], manifest["outputs"][0]["sha256"])
+```
+
+`profile` returns the report as a dict, and `clean`, `query` and `convert` return the run manifest. Every flag is a keyword argument. See [python/README.md](python/README.md). The wheels are built by `tools/wheels.py`, which needs only Go and the Python standard library, and published by the release workflow through PyPI trusted publishing.
 
 ## Performance and stress testing
 
@@ -152,7 +237,7 @@ Parquet, on 2 million of the same rows: CSV to Parquet in 5 s at 56 MB peak (226
 
 Row counts match between `query -agg count` and `convert` output. Fuzz targets cover the CSV reader, JSON reader and value parsers; `go test -race` passes, including a goroutine-leak test and a network test that drops, stalls and 503s a download mid-stream.
 
-Only three things grow with the data: `-dedupe` keeps one 8-byte hash per distinct row, `-group` keeps one accumulator per group, and `-sort` buffers the rows it sorts. Everything else is constant per row.
+Only a few things grow with the data. `-dedupe` keeps one 8-byte hash per distinct row, `-group` keeps one accumulator per group, and `-sort` buffers the rows it sorts. `-decontam` holds the test sets' n-grams. `-near-dupes` is a fixed `-near-mem` budget. Everything else is constant per row.
 
 ## License
 

@@ -92,6 +92,12 @@ conversion and the switch that turns it off.
 
 ## 6. Reproducibility
 
+`-manifest run.json` records the checksums that prove it: run the same
+command again and the output SHA-256 must match. Parts written by several
+workers are the exception when `-dedupe` or `-near-dupes` is on, because
+which copy of a duplicate is kept depends on which part reaches it first;
+write one output when a run must be repeatable byte for byte.
+
 The same binary, input and flags give byte-identical output. There is no
 randomness and no clock in the data, only in `watch` headers. Column types
 are inferred from the first 1,000 rows, so an input delivered in a different
@@ -99,7 +105,9 @@ order can type a column differently; `untyped_values` in the log shows it.
 
 ## 7. Where the data goes
 
-- No network connection is made except to a URL you pass as the source.
+- No network connection is made except to a URL or bucket you pass as a
+  source, a test set or a join file. Credentials are read from the standard
+  AWS, Google and Hugging Face variables and sent only to those hosts.
 - No telemetry and no update checks.
 - Parquet and Excel read from a pipe or URL are spooled to a temporary file
   in the system temp directory and removed when the run ends. Everything
@@ -113,4 +121,7 @@ order can type a column differently; `untyped_values` in the log shows it.
 - the raw input and its checksum
 - the command line and `runs.jsonl`
 - the output and its checksum
+- the run manifest from `-manifest run.json`, which holds all of the above in
+  one file: every input's and output's SHA-256, the command, the build, and
+  each rule with the rows or values it dropped or changed
 - the `datacom version` line, also in the log, and the release checksum you verified

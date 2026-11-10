@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `-redact emails,phones,ids,cards` masks personal data as `[EMAIL]`, `[PHONE]`, `[ID]` and `[CARD]`. ID numbers are recognised by format and check digit (US SSN, UK National Insurance, Kenyan KRA PIN, South African ID, Aadhaar), card numbers by the Luhn check and issuer prefix, and columns named like `national_id` or `phone` are masked whole. `profile` lists the columns that hold personal data.
+- `-manifest run.json` writes a record of every run, failed ones included: the SHA-256 and size of each input and output, the command and build, and each rule applied with the rows or values it dropped or changed, including each `-where` condition.
+- `-text body` cleans columns as documents: garbled characters repaired, non-UTF-8 bytes read as Windows-1252, HTML stripped and entities decoded, Unicode in NFC form, control and zero-width characters removed, spacing tidied with paragraphs kept.
+- `-quality` drops documents by the Gopher heuristics, each rule configurable and counted; `-decontam` drops documents sharing a 13-word sequence with any test-set field, counted per test set; `-near-dupes 0.8` removes near-duplicates with MinHash LSH in a fixed `-near-mem` index.
+- Sources can be several paths, globs with `**`, `s3://` (SigV4 signed, or anonymous for public buckets), `gs://` and `hf://datasets/...`. Several sources with one output are read as one stream matched by column name; `-o out/` writes one part per source, `-workers` at a time, deduplicated across parts.
+- Quality, test-set overlap, near-duplicate signatures and masking run on every core while keeping input order.
+- `pip install datacom`: platform wheels bundle the binary with a Python API whose `clean`, `query` and `convert` return the run manifest. `tools/wheels.py` builds them; the release workflow publishes them to PyPI.
+- The browser interface masks personal data, offers each run's record for download, and has a light theme beside the dark one.
+- Fixed: CSV delimiter sniffing waited for 64 KB of input, so `watch` on a CSV that grew slowly showed nothing until then.
 - `watch` decompresses a growing `.gz` or `.zst` file the way the other commands do, instead of parsing the compressed bytes as rows, and hands over the last rows of a gzip member as soon as they are decoded rather than holding them until the file grows again.
 - The browser interface is redesigned as a dark, logo-themed toolkit: a fixed top bar with the open file and its settings, a tool rail, an options panel with tabbed sections for Pick & total and Watch, and a results workspace with summary cards and a table that scrolls on its own. It also offers the respell and phone-number options, every output format the engine writes, and shows HTML and SQL results as text instead of failing to preview them.
 - `watch -idle 1m` stops once the file has not changed for that long instead of following forever. The browser interface uses 30 s unless told otherwise, and counts rows per window when no totals are chosen, which is far faster than printing every row.
