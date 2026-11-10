@@ -1,3 +1,5 @@
+//go:build unix
+
 // benchrun runs a command n times and appends one TSV line with the median
 // wall time, best wall time, CPU seconds and peak RSS to a results file.
 //
@@ -9,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -64,7 +67,11 @@ func main() {
 			if c > cpu {
 				cpu = c
 			}
-			if r := float64(ru.Maxrss) / 1024; r > rss {
+			r := float64(ru.Maxrss) / 1024 // kilobytes on Linux
+			if runtime.GOOS == "darwin" {
+				r /= 1024 // bytes on macOS
+			}
+			if r > rss {
 				rss = r
 			}
 		}
