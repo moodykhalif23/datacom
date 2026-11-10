@@ -10,7 +10,6 @@
 - [What `clean` changes, with examples, and how to turn each change off](docs/normalization.md)
 - [Running it where the output has to be defended: verified installs, logs, reconciliation](docs/operations.md)
 - [Benchmarks against qsv, Miller, csvtk, DuckDB, csvkit and xsv, and how to reproduce them](docs/benchmarks.md)
-
 - **Streams everything.** Files larger than RAM are fine. Only `-sort` and the `table` / `md` views buffer rows; `-dedupe` keeps one 8-byte hash per distinct row.
 - **Reads** CSV with any delimiter (comma, semicolon, tab, pipe), TSV, JSON arrays, NDJSON, XML, Excel (`.xlsx`) and OpenDocument (`.ods`) spreadsheets one sheet at a time, Parquet and Avro; plain, gzip, zstd or inside a zip; UTF-8, UTF-16 or Latin-1 XML; from a file, stdin or an http(s) URL. Format and delimiter are auto-detected.
 - **Writes** CSV, TSV, JSON, NDJSON, XML, Excel, OpenDocument, Parquet, Avro, an HTML table, SQL (`CREATE TABLE` plus `INSERT`s typed from the data), Markdown or an aligned terminal table, gzip- or zstd-compressed when the output name ends in `.gz` or `.zst`.
@@ -50,14 +49,11 @@ Not everyone wants a terminal. The same binary has a browser interface for them:
 datacom ui
 ```
 
-It opens `http://127.0.0.1:7878`, a dark workspace in the logo's colours laid out like a desktop toolkit, so nothing needs long scrolling:
+It opens `http://127.0.0.1:7878`
 
-- **Top bar.** The open file, its column count, a sheet picker for workbooks and a "Read as" override for files whose type is not detected.
-- **Tool rail.** Summarize, Clean, Pick & total, Convert and Watch, each with a one-line hint.
-- **Options panel.** The chosen tool's settings, with a short explanation beside each. Pick & total and Watch split theirs into tabs (Clean, Rows, Columns, Calculate, Totals, Sort, Join) that show how many settings each holds. The run button and output format stay pinned at the bottom.
 - **Workspace.** Drop a file anywhere on the page, choose one, or type a path or URL. After a run it shows a status, summary cards, any findings in plain language, a preview where only the table scrolls, and a Download button.
 
-Filters, totals and sorting are built from menus of the file's actual columns, so nobody has to learn the expression language, though a box for typing conditions by hand is there for those who do. Ctrl+Enter runs the current tool. The layout narrows to an icon rail on small laptops and stacks on phones. The screens are designed in Figma first; the design file holds the colour, spacing and type tokens and the components the page is built from.
+Filters, totals and sorting are built from menus of the file's actual columns, so nobody has to learn the expression language, though a box for typing conditions by hand is there for those who do. Ctrl+Enter runs the current tool.
 
 Everything runs locally through the same code path as the command line, so results match exactly. The page works offline on Windows, macOS and Linux. `-addr host:port` chooses the address, `-no-open` skips launching the browser. Ctrl-C in the terminal stops it and removes any copied files.
 
@@ -114,7 +110,6 @@ Add `-monitor` to any command for a live line on stderr (rows, MB read, throughp
 
 `-agg "count, sum(x), avg(x), min(x), max(x), distinct(x), first(x), last(x)"`. Add `:alias` to name a column.
 Memory grows with the number of groups, not the number of rows.
-
 
 ## As a library
 

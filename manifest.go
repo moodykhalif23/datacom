@@ -17,6 +17,23 @@ type runRecord struct {
 	outputs   []*outputRecord
 	rawHeader []string
 	header    []string
+	near      *pipeline.NearIndex
+	contam    *pipeline.Contamination
+}
+
+// cleanNames maps column names given as they appear in the input to the
+// names Clean gave them, so -text "Body Text" still finds body_text.
+func (rec *runRecord) cleanNames(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = n
+		if pipeline.Index(rec.header, n) < 0 {
+			if j := pipeline.Index(rec.rawHeader, n); j >= 0 && j < len(rec.header) {
+				out[i] = rec.header[j]
+			}
+		}
+	}
+	return out
 }
 
 type outputRecord struct {
@@ -104,9 +121,11 @@ func writeManifest(path, cmd string, o opts, rep pipeline.RunReport, rec *runRec
 	if rec.ledger != nil {
 		m.Inputs = rec.ledger.Inputs()
 		for i := range m.Inputs {
-			switch m.Inputs[i].Source {
-			case o.join:
+			switch src := m.Inputs[i].Source; {
+			case src == o.join:
 				m.Inputs[i].Role = "join"
+			case contains(splitList(o.decontam), src):
+				m.Inputs[i].Role = "test-set"
 			default:
 				m.Inputs[i].Role = "input"
 			}
@@ -184,6 +203,30 @@ func rules(cmd string, o opts, rep pipeline.RunReport, rec *runRecord) []rule {
 	for i, w := range o.where {
 		add("where", "expression", w, "rows_dropped", c[fmt.Sprintf("dropped:where:%d", i+1)])
 	}
+	if o.quality != "" {
+		dropped := map[string]int64{}
+		for _, name := range pipeline.QualityRuleNames {
+			dropped[name] = c["dropped:quality:"+name]
+		}
+		q, _ := pipeline.ParseQuality(o.quality)
+		add("quality", "settings", q, "rows_dropped", dropped)
+	}
+	if rec.contam != nil {
+		sets := []map[string]any{}
+		for i, f := range rec.contam.Files {
+			sets = append(sets, map[string]any{"file": f, "items": rec.contam.Items[i], "rows_dropped": c[fmt.Sprintf("dropped:decontam:%d", i+1)]})
+		}
+		add("decontam", "ngram_words", rec.contam.N, "test_sets", sets, "items_too_short", rec.contam.Skipped)
+	}
+	if rec.near != nil {
+		bands, rows := rec.near.Params()
+		cols := splitList(o.text)
+		if len(cols) == 0 {
+			cols = []string{"*"}
+		}
+		add("near-dupes", "threshold", o.nearDupes, "columns", cols, "shingle_words", 5, "lsh_bands", bands, "lsh_rows", rows,
+			"memory_mb", o.nearMem, "rows_dropped", c["dropped:near-dupes"])
+	}
 	if o.selectCols != "" {
 		add("select", "columns", splitList(o.selectCols))
 	}
@@ -208,4 +251,13 @@ func rules(cmd string, o opts, rep pipeline.RunReport, rec *runRecord) []rule {
 		add("limit", "rows", o.limit)
 	}
 	return rs
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

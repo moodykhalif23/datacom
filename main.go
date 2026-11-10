@@ -51,6 +51,12 @@ clean / query / watch flags:
   -redact LIST  mask personal data: emails, phones, ids, cards or all; matches become [EMAIL], [PHONE], [ID], [CARD]
   -text a,b     clean these columns as documents: repair garbled characters, strip HTML, NFC Unicode,
                 drop control characters, tidy spacing but keep paragraphs
+  -quality RULES  drop low-quality documents by the Gopher rules: "default", or changes such as
+                "min-words=20,stopwords=2" (min-words, max-words, min-word-length, max-word-length, symbols,
+                bullets, ellipsis, alpha, dup-lines, stopwords); each rule's drops are counted
+  -decontam FILES  drop documents sharing a 13-word sequence (-decontam-n) with any row of these test sets
+  -near-dupes 0.8  drop rows whose text (the -text columns, else every column) shares about this share
+                of five-word shingles with an earlier row; MinHash LSH in a fixed -near-mem MB index (256)
   -join FILE    left join another file       -on KEY     join key, or "left=right"
   -derive "name = EXPR"   add or overwrite a column; repeatable, e.g. "margin = revenue - cost",
                 "band = if(amount > 1000, high, low)", "yr = year(date)", "status = lower(status)"
@@ -82,9 +88,12 @@ type opts struct {
 	quiet, snake, dedupe             bool
 	noTypes, keepEmpty, foldCase     bool
 	phone, redact, text              string
+	quality, decontam                string
+	decontamN                        int
 	selectCols, group, agg, sortKey  string
 	join, on                         string
-	limit, top                       int
+	limit, top, nearMem              int
+	nearDupes                        float64
 	jsonReport                       bool
 	every, idle                      time.Duration
 	where, derive                    multi
@@ -140,6 +149,11 @@ func main() {
 	fs.StringVar(&o.phone, "phone", "", "")
 	fs.StringVar(&o.redact, "redact", "", "")
 	fs.StringVar(&o.text, "text", "", "")
+	fs.Float64Var(&o.nearDupes, "near-dupes", 0, "")
+	fs.StringVar(&o.quality, "quality", "", "")
+	fs.StringVar(&o.decontam, "decontam", "", "")
+	fs.IntVar(&o.decontamN, "decontam-n", 13, "")
+	fs.IntVar(&o.nearMem, "near-mem", 256, "")
 	fs.StringVar(&o.join, "join", "", "")
 	fs.StringVar(&o.on, "on", "", "")
 	fs.Var(&o.derive, "derive", "")
@@ -423,6 +437,36 @@ func shape(ctx context.Context, t *pipeline.Table, o opts, rec *runRecord) (*pip
 		}
 		t = pipeline.Filter(t, conds)
 	}
+	textCols := rec.cleanNames(splitList(o.text))
+	if o.quality != "" {
+		q, err := pipeline.ParseQuality(o.quality)
+		if err != nil {
+			return nil, nil, err
+		}
+		if t, err = pipeline.Quality(t, q, textCols); err != nil {
+			return nil, nil, err
+		}
+	}
+	if o.decontam != "" {
+		if rec.contam == nil {
+			if rec.contam, err = pipeline.LoadTestSets(pipeline.WithMonitor(ctx, nil), splitList(o.decontam), o.decontamN); err != nil {
+				return nil, nil, err
+			}
+		}
+		if t, err = pipeline.Decontaminate(t, rec.contam, textCols); err != nil {
+			return nil, nil, err
+		}
+	}
+	if o.nearDupes > 0 {
+		if rec.near == nil {
+			if rec.near, err = pipeline.NewNearIndex(pipeline.NearDupOptions{Threshold: o.nearDupes, MemoryMB: o.nearMem}); err != nil {
+				return nil, nil, err
+			}
+		}
+		if t, err = pipeline.NearDedupe(t, rec.near, textCols); err != nil {
+			return nil, nil, err
+		}
+	}
 	if t, err = pipeline.Select(t, splitList(o.selectCols)); err != nil {
 		return nil, nil, err
 	}
@@ -525,6 +569,9 @@ func meter(mon *pipeline.Monitor, r io.Reader) io.Reader {
 // finish prints the monitor report and appends it to the JSON log, stamped
 // with when it ran, which build ran it and the exact arguments.
 func finish(mon *pipeline.Monitor, o opts, start time.Time, cmd string, rec *runRecord, runErr error) {
+	if rec.near != nil {
+		rec.near.Note(mon)
+	}
 	rep := mon.Report()
 	rep.Time, rep.Version, rep.Command = start.Format(time.RFC3339), versionString(), os.Args[1:]
 	if o.manifest != "" {

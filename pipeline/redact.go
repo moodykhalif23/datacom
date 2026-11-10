@@ -84,7 +84,7 @@ func Redact(in *Table, kinds RedactKind, country string) *Table {
 	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
-		for r := range in.Rows {
+		ordered(in, func(r Row) [4]int {
 			var n [4]int
 			for i, v := range r {
 				if v == "" {
@@ -102,13 +102,13 @@ func Redact(in *Table, kinds RedactKind, country string) *Table {
 				}
 				r[i] = RedactText(v, kinds, country, &n)
 			}
+			return n
+		}, func(r Row, n [4]int) bool {
 			for i, c := range n {
 				bump(counters[i], int64(c))
 			}
-			if !out.send(ch, r) {
-				return
-			}
-		}
+			return out.send(ch, r)
+		})
 	}()
 	return out
 }
