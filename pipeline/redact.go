@@ -6,12 +6,6 @@ import (
 	"sync/atomic"
 )
 
-// RedactKind is a set of personal-data kinds to mask.
-// Redact masks personal data in every cell: emails, phone numbers, ID
-// numbers and payment card numbers become [EMAIL], [PHONE], [ID] and
-// [CARD]. country is the calling code that marks national phone numbers
-// written without a leading 0. In columns whose name says they hold ID or
-// phone numbers, every value with enough digits is masked whole.
 type RedactKind uint8
 
 const (
@@ -171,8 +165,8 @@ func maskEmails(s string, n *[4]int) string {
 			if dot <= 0 {
 				break
 			}
-			if ok = tld(s[i+2+dot:end]); !ok {
-				end = i + 1 + dot
+			if ok = tld(s[i+2+dot : end]); !ok {
+				end = i + 1 + strings.LastIndexAny(s[i+1:end], ".-")
 			}
 		}
 		if !ok {
@@ -191,12 +185,15 @@ func maskEmails(s string, n *[4]int) string {
 	return b.String()
 }
 
+// tld reports a top-level domain: two or more letters, or an
+// internationalized one such as xn--p1ai.
 func tld(s string) bool {
 	if len(s) < 2 {
 		return false
 	}
+	idn := len(s) > 4 && strings.EqualFold(s[:4], "xn--")
 	for i := 0; i < len(s); i++ {
-		if s[i]|0x20 < 'a' || s[i]|0x20 > 'z' {
+		if c := s[i]; (c|0x20 < 'a' || c|0x20 > 'z') && !(idn && (c >= '0' && c <= '9' || c == '-')) {
 			return false
 		}
 	}

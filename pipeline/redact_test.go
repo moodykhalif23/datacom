@@ -25,6 +25,7 @@ func TestRedactText(t *testing.T) {
 		{"Contact ops@acme.co.ke today.", "", "Contact [EMAIL] today."},
 		{"a.b-c+tag@sub.example.org, x@y.com.", "", "[EMAIL], [EMAIL]."},
 		{"see x@y.com.2025 and 0@0.AA.0000000000", "", "see [EMAIL].2025 and [EMAIL].[PHONE]"},
+		{"0@0.AA-0000000000, ivan@example.xn--p1ai", "", "[EMAIL]-[PHONE], [EMAIL]"},
 		{"call +254 712 345 678 or 0712345678", "", "call [PHONE] or [PHONE]"},
 		{"0712 345 678", "", "[PHONE]"},
 		{"(020) 123 4567", "", "[PHONE]"},
