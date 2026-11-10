@@ -103,7 +103,10 @@ func (ix *NearIndex) seenSig(sig []uint64) bool {
 		t, placed := ix.tables[b], false
 		for p := uint64(0); p < probe && !placed; p++ {
 			slot := &t[(h+p)&ix.mask]
-			placed = slot.CompareAndSwap(0, h) || slot.Load() == h
+			placed = slot.CompareAndSwap(0, h)
+			if !placed && slot.Load() == h {
+				return true // another pipeline sharing the index just added a near-duplicate
+			}
 		}
 		if !placed {
 			t[h&ix.mask].Store(h)

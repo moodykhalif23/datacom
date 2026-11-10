@@ -143,7 +143,7 @@ func TestNearIndexShared(t *testing.T) {
 		}(g)
 	}
 	wg.Wait()
-	if kept < 1 || kept > 8 {
+	if kept != 1 {
 		t.Fatalf("kept %d copies", kept)
 	}
 	if !ix.Seen(doc) {
