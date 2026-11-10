@@ -160,11 +160,22 @@ func maskEmails(s string, n *[4]int) string {
 		for end < len(s) && (isAlnum(s[end]) || s[end] == '.' || s[end] == '-') {
 			end++
 		}
-		for s[end-1] == '.' || s[end-1] == '-' {
-			end--
+		// Trailing labels that cannot end a domain, as in a@b.com.2025, are
+		// left out, so masking the rest later cannot turn them into one.
+		ok := false
+		for !ok {
+			for s[end-1] == '.' || s[end-1] == '-' {
+				end--
+			}
+			dot := strings.LastIndexByte(s[i+1:end], '.')
+			if dot <= 0 {
+				break
+			}
+			if ok = tld(s[i+2+dot:end]); !ok {
+				end = i + 1 + dot
+			}
 		}
-		dot := strings.LastIndexByte(s[i+1:end], '.')
-		if dot <= 0 || !tld(s[i+2+dot:end]) {
+		if !ok {
 			continue
 		}
 		b.WriteString(s[last:st])
