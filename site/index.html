@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>datacom · data cleaner for big, messy files</title>
+<meta name="description" content="A small, fast, open-source tool that turns large, messy data files into clean, typed data, from the terminal, Python or your browser.">
+<meta property="og:title" content="datacom">
+<meta property="og:description" content="A small, fast, open-source tool that turns large, messy data files into clean, typed data.">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f9f9f9; --text: #333a44; --soft: #6b7480; --line: #e3e6ea; --code: #eef1f4;
+  --blue: #4a9fe0; --blue-hover: #3a8fd0; --grey: #c3c7cc; --grey-hover: #b3b8be; --link: #1f6bf0;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 18px/1.7 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.page { display: grid; grid-template-columns: 300px minmax(0, 800px); gap: 72px; max-width: 1240px; margin: 0 auto; padding: 0 40px; }
+
+.side { position: sticky; top: 0; align-self: start; padding: 80px 0 40px; }
+.side img { display: block; width: 168px; height: auto; margin-left: -6px; }
+.name { margin: 18px 0 0; font-size: 21px; font-weight: 400; color: var(--soft); }
+.links { margin: 28px 0 0; padding: 0; list-style: none; }
+.links li + li { margin-top: 12px; }
+.links a { display: inline-flex; align-items: center; gap: 10px; color: var(--soft); font-size: 19px; }
+.links a:hover { color: var(--text); text-decoration: none; }
+.links svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.btn { display: block; width: 150px; margin-top: 48px; padding: 12px 0; border-radius: 3px; background: var(--blue); color: #fff; font-size: 20px; font-weight: 500; text-align: center; }
+.btn:hover { background: var(--blue-hover); text-decoration: none; }
+.btn.alt { margin-top: 44px; background: var(--grey); }
+.btn.alt:hover { background: var(--grey-hover); }
+
+main { padding: 80px 0 64px; }
+h1 { margin: 0 0 20px; font-size: 32px; line-height: 1.25; font-weight: 500; color: #222831; }
+h2 { margin: 56px 0 12px; font-size: 24px; font-weight: 500; color: #222831; }
+p { margin: 0 0 18px; }
+.shot { display: block; width: 100%; height: auto; margin: 34px 0 10px; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 8px 28px rgb(20 30 45 / .10); }
+.caption { margin: 0 0 40px; font-size: 15px; color: var(--soft); }
+ul.features { margin: 0 0 18px; padding-left: 22px; }
+ul.features li { margin: 0 0 10px; padding-left: 4px; }
+code { padding: 1px 6px; border-radius: 3px; background: var(--code); font: 15.5px "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+pre { margin: 0 0 18px; padding: 16px 18px; overflow-x: auto; border-radius: 4px; background: #1f2630; color: #e8edf3; font: 15px/1.6 "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+pre .c { color: #8d99a8; }
+footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 15px; color: var(--soft); }
+
+@media (max-width: 900px) {
+  .page { display: block; padding: 0 16px; }
+  .side { position: static; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 32px 0 0; }
+  .side img { width: 120px; margin: 0; }
+  .name { flex: 1 1 140px; margin: 0; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px 20px; width: 100%; margin: 12px 0 0; }
+  .links li + li { margin: 0; }
+  .btn, .btn.alt { width: auto; flex: 1 1 140px; margin: 12px 0 0; }
+  main { padding-top: 40px; }
+  h1 { font-size: 26px; }
+  body { font-size: 17px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <aside class="side">
+    <img src="/assets/logo.png" alt="datacom" width="324" height="216">
+    <p class="name">Data cleaner</p>
+    <ul class="links">
+      <li><a href="https://github.com/moodykhalif23/datacom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>GitHub</a></li>
+      <li><a href="https://pypi.org/project/datacom/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>PyPI</a></li>
+      <li><a href="https://github.com/moodykhalif23/datacom#usage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Documentation</a></li>
+      <li><a href="https://github.com/moodykhalif23/datacom/blob/main/CHANGELOG.md"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>Changelog</a></li>
+    </ul>
+    <a class="btn" href="https://github.com/moodykhalif23/datacom/releases/latest">Download</a>
+    <a class="btn alt" href="https://github.com/sponsors/moodykhalif23">Sponsor</a>
+  </aside>
+
+  <main>
+    <h1>Clean, profile and query data files too big or too messy for a spreadsheet.</h1>
+    <p>datacom turns exports full of stray spaces, mixed date formats, numbers like “KES 1,250.00”, duplicate rows and garbled text into clean, typed data, and tells you about every change it made. Values that do not fit are kept as written and listed, never guessed at.</p>
+    <p>It is one small program with nothing else to install, and it runs on your own computer. Files larger than memory stream straight through: on an eight-thread machine it cleans ten million messy rows from a gzipped file in about ten seconds, using 35 MB. The terminal, Python and the browser all drive the same engine, so results match exactly.</p>
+
+    <img class="shot" src="/assets/screenshot.png" alt="The datacom browser interface after a clean: options on the left, a summary of what changed and the cleaned rows with emails masked on the right" width="2880" height="1800">
+    <p class="caption"><code>datacom ui</code> opens the same tools in your browser, for colleagues who do not use a terminal.</p>
+
+    <p>datacom has what you would expect from a data cleaner:</p>
+    <ul class="features">
+      <li>Reads CSV with any delimiter, TSV, JSON, NDJSON, Excel, OpenDocument, Parquet, Avro and XML, plain or in gzip, zstd or zip, and writes all of them, plus HTML tables and SQL</li>
+      <li>Fixes numbers, dates, yes/no values, phone numbers and column names, and drops empty and duplicate rows</li>
+      <li>Summarizes any file: types, missing values, common values and the problems worth fixing</li>
+      <li>Filters, calculated columns, joins, totals by group and sorting, from one small expression language</li>
+      <li>Follows a file that is still being written and reports on each new window of rows</li>
+      <li>Retries and resumes downloads over slow or unreliable networks</li>
+    </ul>
+
+    <p>And what AI training data and audited work need:</p>
+    <ul class="features">
+      <li>Masks emails, phone numbers, ID numbers and card numbers, with a count for each</li>
+      <li>Cleans document text: garbled characters, HTML, mixed Unicode forms and control characters</li>
+      <li>Drops low-quality documents, near-duplicates within a fixed memory budget, and anything that overlaps a test set, each rule counted on its own</li>
+      <li>Writes a record of every run with the SHA-256 of each input and output and what each rule changed</li>
+      <li>Reads many files at once from folders, S3, Google Cloud Storage or the Hugging Face Hub and writes the result in parts on every core</li>
+    </ul>
+
+    <h2>Install</h2>
+    <p>Download the binary for Windows, macOS or Linux from the <a href="https://github.com/moodykhalif23/datacom/releases/latest">releases page</a>, or use one of these:</p>
+<pre>pip install datacom
+go install github.com/moodykhalif23/datacom@latest</pre>
+
+    <h2>First steps</h2>
+<pre><span class="c"># what is in this file?</span>
+datacom profile sales.xlsx
+
+<span class="c"># fix values, drop duplicates, mask personal data</span>
+datacom clean raw.csv.gz -snake -dedupe -redact all -o clean.parquet
+
+<span class="c"># totals by region</span>
+datacom query sales.csv -where "amount > 1000" -group region -agg "count,sum(amount)"
+
+<span class="c"># the same, point and click</span>
+datacom ui</pre>
+    <p>From Python, <code>datacom.clean("raw.csv", "clean.parquet", dedupe=True)</code> returns the run record as a dict. The <a href="https://github.com/moodykhalif23/datacom#usage">documentation</a> covers every option.</p>
+
+    <footer>datacom is open source under the MIT licence. <a href="https://github.com/moodykhalif23/datacom">Source on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>

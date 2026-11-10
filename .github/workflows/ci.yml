@@ -21,7 +21,7 @@ jobs:
         run: go test -race ./...
       - name: fuzz smoke
         run: |
-          for f in FuzzReadCSV FuzzReadJSON FuzzValues FuzzRedactText FuzzCleanText; do
+          for f in FuzzReadCSV FuzzCSVSplit FuzzReadJSON FuzzValues FuzzRedactText FuzzCleanText; do
             go test ./pipeline/ -run '^$' -fuzz="^$f\$" -fuzztime=15s
           done
       - name: known vulnerabilities
