@@ -277,3 +277,30 @@ func TestManifest(t *testing.T) {
 		t.Fatalf("missing input manifest: %v", m)
 	}
 }
+
+func TestWatchCSVGrowingSlowly(t *testing.T) {
+	live := filepath.Join(t.TempDir(), "live.csv")
+	os.WriteFile(live, []byte("status,n\na,1\n"), 0o644)
+	out := filepath.Join(t.TempDir(), "watch.txt")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, "watch", opts{in: live, every: 200 * time.Millisecond, group: "status", agg: "count", out: out, quiet: true, format: "csv"})
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if b, _ := os.ReadFile(out); strings.Contains(string(b), "a,1") {
+			break
+		}
+		if time.Now().After(deadline) {
+			b, _ := os.ReadFile(out)
+			t.Fatalf("a short live CSV was not reported:\n%s", b)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

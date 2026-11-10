@@ -40,6 +40,24 @@ func sniffDelimiter(br *bufio.Reader) rune {
 	return rune(best)
 }
 
+// firstLine peeks at the first line without waiting for more input than
+// it needs, so a live feed that has written one short line is not stalled.
+func firstLine(br *bufio.Reader) []byte {
+	n := 1
+	for {
+		b, err := br.Peek(n)
+		if i := bytes.IndexByte(b, '\n'); i >= 0 {
+			return b[:i]
+		}
+		if err != nil || len(b) >= 64<<10 {
+			return b
+		}
+		if n = br.Buffered(); n <= len(b) {
+			n = len(b) + 1
+		}
+	}
+}
+
 // utf16Reader turns UTF-16 text, as Excel's "Unicode Text" export writes
 // it, into UTF-8. The byte order mark has already been consumed.
 type utf16Reader struct {

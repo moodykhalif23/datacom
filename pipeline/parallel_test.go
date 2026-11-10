@@ -14,9 +14,7 @@ func TestOrderedStagesStopCleanly(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		tb := Read(context.Background(), io.MultiReader(strings.NewReader("a,b\n"), &bigCSV{}), FormatCSV)
 		tb = Redact(tb, RedactAll, "")
-		q := DefaultQuality()
-		q.MinWords = 0
-		tb, _ = Quality(tb, q, nil)
+		tb, _ = Quality(tb, QualityRules{}, nil)
 		ix, _ := NewNearIndex(NearDupOptions{Threshold: 0.8, MemoryMB: 1})
 		tb, _ = NearDedupe(tb, ix, nil)
 		tb = Limit(tb, 1)
@@ -36,8 +34,8 @@ func TestOrderedStagesStopCleanly(t *testing.T) {
 func TestOrderedFlushesSlowInput(t *testing.T) {
 	pr, pw := io.Pipe()
 	defer pw.Close()
-	tb := Read(context.Background(), pr, FormatCSV)
 	go io.WriteString(pw, "body\nfirst row of a live feed\n")
+	tb := Read(context.Background(), pr, FormatCSV)
 	tb = Redact(tb, RedactAll, "")
 	start := time.Now()
 	select {
