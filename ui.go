@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -28,6 +29,8 @@ var uiHTML string
 
 //go:embed ui-logo.png
 var uiLogo []byte
+
+var pseudoVersion = regexp.MustCompile(`^(v\d+\.\d+\.\d+)-(?:0\.)?\d{14}-[0-9a-f]{12}.*$`)
 
 const (
 	uiPort      = "7878"
@@ -139,10 +142,7 @@ func (s *uiServer) handler() http.Handler {
 func (s *uiServer) index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	full := versionString()
-	short := strings.Fields(full)[1]
-	if i := strings.Index(short, "-0."); i > 0 { // a pseudo-version from an untagged build
-		short = short[:i] + "-dev"
-	}
+	short := pseudoVersion.ReplaceAllString(strings.Fields(full)[1], "$1-dev")
 	page := strings.NewReplacer("{{TOKEN}}", s.token, "{{VERSION}}", full, "{{VERSION_SHORT}}", short).Replace(uiHTML)
 	io.WriteString(w, page)
 }

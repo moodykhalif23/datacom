@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -140,6 +141,23 @@ func TestUI(t *testing.T) {
 	pv = st["preview"].(map[string]any)
 	if st["error"] != nil || strings.Join(toStrings(pv["header"]), ",") != "Region,count,sum_amount_kes" || len(pv["rows"].([]any)) == 0 {
 		t.Fatalf("query: %v", st)
+	}
+
+	id = c.post("/api/run", map[string]any{"cmd": "clean", "source": src, "name": "messy.csv", "snake": true, "redact": []string{"emails", "phones"}, "format": "csv"})["id"].(string)
+	st = c.wait(id)
+	if pv := st["preview"].(map[string]any); st["error"] != nil || !strings.Contains(fmt.Sprint(pv["rows"]), "[EMAIL]") || strings.Contains(fmt.Sprint(pv["rows"]), "@") {
+		t.Fatalf("masked clean: %v", st)
+	}
+	if st["record_name"] != "messy-clean-record.json" {
+		t.Fatalf("record name: %v", st["record_name"])
+	}
+	rec, err := http.Get(srv.URL + st["record"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recBody, _ := io.ReadAll(rec.Body)
+	if !strings.Contains(string(recBody), `"status": "ok"`) || !strings.Contains(string(recBody), `"rule": "redact"`) || !strings.Contains(rec.Header.Get("Content-Disposition"), "messy-clean-record.json") {
+		t.Fatalf("record:\n%s", recBody)
 	}
 
 	id = c.post("/api/run", map[string]any{"cmd": "clean", "source": src, "name": "messy.csv", "snake": true, "fold_case": true, "format": "html"})["id"].(string)
