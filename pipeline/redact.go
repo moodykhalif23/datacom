@@ -84,7 +84,7 @@ func Redact(in *Table, kinds RedactKind, country string) *Table {
 	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
-		ordered(in, func(r Row) [4]int {
+		ordered(in, nil, func(r Row) [4]int {
 			var n [4]int
 			for i, v := range r {
 				if v == "" {

@@ -112,48 +112,81 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 				textFixed[k] = mon.Counter(n.name)
 			}
 		}
-		emit := func(r Row) bool {
-			if mon != nil && len(r) != len(hdr) {
-				if len(r) < len(hdr) {
-					mon.Padded.Add(1)
-				} else {
-					mon.Trimmed.Add(1)
-				}
-			}
+		type badCell struct {
+			col  int
+			kind Kind
+			raw  string
+		}
+		type cleaned struct {
+			row     Row
+			width   int
+			changed int64
+			empty   bool
+			hash    uint64
+			bad     []badCell
+		}
+		prepare := func(r Row) cleaned {
+			c := cleaned{width: len(r), empty: true}
 			r = fit(r, len(hdr))
-			empty := true
 			for i := range r {
+				raw := r[i]
+				if textCol[i] {
+					var tc TextChange
+					r[i], tc = CleanText(raw)
+					for k, n := range textChangeNames {
+						if tc&n.change != 0 {
+							bump(textFixed[k], 1)
+						}
+					}
+					c.empty = c.empty && r[i] == ""
+					continue
+				}
 				k := KindText
 				if o.Types {
 					k = schema.Kinds[i]
 				}
-				raw := r[i]
-				if textCol[i] {
-					var c TextChange
-					r[i], c = CleanText(raw)
-					for k, n := range textChangeNames {
-						if c&n.change != 0 {
-							bump(textFixed[k], 1)
-						}
-					}
-					empty = empty && r[i] == ""
-					continue
-				}
 				var ok bool
 				if r[i], ok = normalizeWith(raw, k, o.PhonePrefix); !ok && mon != nil {
-					mon.Bad(hdr[i], k, raw)
+					c.bad = append(c.bad, badCell{i, k, raw})
 				}
 				if r[i] != raw && raw != "" {
-					bump(changed, 1)
+					c.changed++
 				}
-				if folds != nil && folds[i] != nil && r[i] != "" {
+				c.empty = c.empty && r[i] == ""
+			}
+			if seen != nil && folds == nil && !(c.empty && o.DropEmpty) {
+				c.hash = hashRow(r)
+			}
+			c.row = r
+			return c
+		}
+		stopped := false
+		emit := func(_ Row, c cleaned) bool {
+			r := c.row
+			if mon != nil {
+				switch {
+				case c.width < len(hdr):
+					mon.Padded.Add(1)
+				case c.width > len(hdr):
+					mon.Trimmed.Add(1)
+				}
+				for _, b := range c.bad {
+					mon.Bad(hdr[b.col], b.kind, b.raw)
+				}
+			}
+			bump(changed, c.changed)
+			if folds != nil {
+				for i := range r {
+					if folds[i] == nil || r[i] == "" {
+						continue
+					}
 					key := strings.ToLower(r[i])
-					if c, known := folds[i][key]; known {
-						if c != r[i] {
+					if f, known := folds[i][key]; known {
+						if f != r[i] {
 							if folded[i] == 0 {
-								foldExample[i] = r[i] + " to " + c
+								foldExample[i] = r[i] + " to " + f
 							}
-							r[i] = c
+							r[i] = f
 							folded[i]++
 							bump(foldedAll, 1)
 						}
@@ -161,31 +194,30 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 						folds[i][key] = r[i]
 					}
 				}
-				empty = empty && r[i] == ""
 			}
-			if empty && o.DropEmpty {
+			if c.empty && o.DropEmpty {
 				if mon != nil {
 					mon.Empty.Add(1)
 				}
 				return true
 			}
-			if seen != nil && !seen.Add(hashRow(r)) {
-				if mon != nil {
-					mon.Dupes.Add(1)
+			if seen != nil {
+				if folds != nil {
+					c.hash = hashRow(r)
 				}
-				return true
+				if !seen.Add(c.hash) {
+					if mon != nil {
+						mon.Dupes.Add(1)
+					}
+					return true
+				}
 			}
-			return out.send(ch, r)
+			stopped = !out.send(ch, r)
+			return !stopped
 		}
-		for _, r := range buf {
-			if !emit(r) {
-				return
-			}
-		}
-		for r := range in.Rows {
-			if !emit(r) {
-				return
-			}
+		ordered(in, buf, prepare, emit)
+		if stopped || in.run.ctx.Err() != nil {
+			return
 		}
 		if mon != nil {
 			for i, n := range folded {

@@ -111,7 +111,7 @@ func Decontaminate(in *Table, c *Contamination, columns []string) (*Table, error
 	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
-		ordered(in, func(r Row) int {
+		ordered(in, nil, func(r Row) int {
 			f, _ := c.Match(joinColumns(r, cols), nil)
 			return f
 		}, func(r Row, f int) bool {

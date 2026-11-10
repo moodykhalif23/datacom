@@ -166,7 +166,7 @@ func Quality(in *Table, q QualityRules, columns []string) (*Table, error) {
 	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
-		ordered(in, func(r Row) string { return q.Check(joinColumns(r, cols)) }, func(r Row, rule string) bool {
+		ordered(in, nil, func(r Row) string { return q.Check(joinColumns(r, cols)) }, func(r Row, rule string) bool {
 			if rule != "" {
 				bump(dropped[rule], 1)
 				return true

@@ -178,7 +178,7 @@ func NearDedupe(in *Table, ix *NearIndex, columns []string) (*Table, error) {
 	out, ch := in.child(in.Header)
 	go func() {
 		defer close(ch)
-		ordered(in, func(r Row) []uint64 {
+		ordered(in, nil, func(r Row) []uint64 {
 			sig, _ := ix.signature(joinColumns(r, cols))
 			return sig
 		}, func(r Row, sig []uint64) bool {

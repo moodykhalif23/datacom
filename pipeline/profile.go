@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // ColumnStats holds the profile of one column.
@@ -65,8 +67,33 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	for i, h := range t.Header {
 		cols[i] = ColumnStats{Name: h, seen: map[string]int64{}, idCol: idColumn(h)}
 	}
-	rowHashes := map[uint64]struct{}{}
+	workers := min(runtime.GOMAXPROCS(0), len(cols))
+	if n, ok := t.run.ctx.Value(parallelKey{}).(int); ok && n > 0 {
+		workers = min(workers, n)
+	}
+	workers = max(workers, 1)
 	dupCap := int64(distinctCap) * 10 // bounds the exact duplicate scan
+	feeds := make([]chan []Row, workers+1)
+	var wg sync.WaitGroup
+	for w := range feeds {
+		feeds[w] = make(chan []Row, 4)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if w == workers {
+				rep.scanDuplicates(feeds[w], dupCap)
+				return
+			}
+			for b := range feeds[w] {
+				for _, r := range b {
+					for i := w; i < len(cols); i += workers {
+						cols[i].add(r.Get(i), distinctCap)
+					}
+				}
+			}
+		}()
+	}
+	batch := make([]Row, 0, profileBatch)
 	for r := range t.Rows {
 		rep.Rows++
 		if rep.Rows == 1 {
@@ -78,63 +105,20 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 				}
 			}
 		}
-		if rep.Rows <= dupCap {
-			rep.DupChecked++
-			h := hashRow(r)
-			if _, dup := rowHashes[h]; dup {
-				rep.Duplicate++
-			} else {
-				rowHashes[h] = struct{}{}
+		if batch = append(batch, r); len(batch) == profileBatch {
+			for _, f := range feeds {
+				f <- batch
 			}
-		}
-		for i := range cols {
-			c := &cols[i]
-			v := strings.TrimSpace(r.Get(i))
-			if IsNull(v) {
-				c.Nulls++
-				continue
-			}
-			c.Count++
-			k := c.kind
-			if !c.fixed && c.kind != KindText {
-				k = Infer(v)
-				c.kind = Widen(c.kind, k)
-			}
-			if f, ok := numeric(v, k); ok {
-				delta := f - c.mean
-				c.mean += delta / float64(c.Count)
-				c.m2 += delta * (f - c.mean)
-				if c.Count == 1 || f < c.minF {
-					c.minF = f
-				}
-				if c.Count == 1 || f > c.maxF {
-					c.maxF = f
-				}
-			}
-			if c.piiSeen < piiSample {
-				c.piiSeen++
-				c.scanPersonal(v)
-			}
-			if c.Count == 1 || v < c.minS {
-				c.minS = v
-			}
-			if c.Count == 1 || v > c.maxS {
-				c.maxS = v
-			}
-			if !c.capped {
-				c.seen[v]++
-				if len(c.seen) > distinctCap {
-					c.capped = true
-					c.sketch = newHLL()
-					for s := range c.seen {
-						c.sketch.add(hash64(hashSeed, s))
-					}
-				}
-			} else {
-				c.sketch.add(hash64(hashSeed, v))
-			}
+			batch = make([]Row, 0, profileBatch)
 		}
 	}
+	for _, f := range feeds {
+		if len(batch) > 0 {
+			f <- batch
+		}
+		close(f)
+	}
+	wg.Wait()
 	for i := range cols {
 		c := &cols[i]
 		if c.kind == KindEmpty {
@@ -205,6 +189,73 @@ func Profile(t *Table, kinds []Kind, topN, distinctCap int) *Report {
 	}
 	rep.Columns = cols
 	return rep
+}
+
+const profileBatch = 256
+
+func (rep *Report) scanDuplicates(feed <-chan []Row, limit int64) {
+	hashes := map[uint64]struct{}{}
+	for b := range feed {
+		for _, r := range b {
+			if rep.DupChecked == limit {
+				break
+			}
+			rep.DupChecked++
+			h := hashRow(r)
+			if _, dup := hashes[h]; dup {
+				rep.Duplicate++
+			} else {
+				hashes[h] = struct{}{}
+			}
+		}
+	}
+}
+
+func (c *ColumnStats) add(v string, distinctCap int) {
+	v = strings.TrimSpace(v)
+	if IsNull(v) {
+		c.Nulls++
+		return
+	}
+	c.Count++
+	k := c.kind
+	if !c.fixed && c.kind != KindText {
+		k = Infer(v)
+		c.kind = Widen(c.kind, k)
+	}
+	if f, ok := numeric(v, k); ok {
+		delta := f - c.mean
+		c.mean += delta / float64(c.Count)
+		c.m2 += delta * (f - c.mean)
+		if c.Count == 1 || f < c.minF {
+			c.minF = f
+		}
+		if c.Count == 1 || f > c.maxF {
+			c.maxF = f
+		}
+	}
+	if c.piiSeen < piiSample {
+		c.piiSeen++
+		c.scanPersonal(v)
+	}
+	if c.Count == 1 || v < c.minS {
+		c.minS = v
+	}
+	if c.Count == 1 || v > c.maxS {
+		c.maxS = v
+	}
+	if !c.capped {
+		c.seen[v]++
+		if len(c.seen) > distinctCap {
+			c.capped = true
+			c.sketch = newHLL()
+			for s := range c.seen {
+				c.sketch.add(hash64(hashSeed, s))
+			}
+		}
+	} else {
+		c.sketch.add(hash64(hashSeed, v))
+	}
 }
 
 // piiSample is how many values per column the profile checks for personal data.

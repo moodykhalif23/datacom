@@ -3,7 +3,6 @@
 package main
 
 import (
-	"compress/gzip"
 	"context"
 	"errors"
 	"flag"
@@ -18,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 	"github.com/moodykhalif23/datacom/pipeline"
 )

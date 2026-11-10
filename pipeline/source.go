@@ -3,7 +3,6 @@ package pipeline
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -13,7 +12,9 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -121,10 +122,19 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 			return f, rf, closeFn, nil // xlsx and parquet need the seekable file itself
 		}
 	}
-	br, err := Decompress(r, false)
+	br, ra, err := decompress(r, false, true)
 	if err != nil {
 		closeFn()
 		return nil, "", nil, err
+	}
+	if ra != nil {
+		stop := context.AfterFunc(ctx, func() { ra.close(ctx.Err()) })
+		fileClose := closeFn
+		closeFn = func() error {
+			stop()
+			ra.close(context.Canceled)
+			return fileClose()
+		}
 	}
 	f := hint
 	if f == "" || f == FormatAuto {
@@ -141,24 +151,36 @@ func Open(ctx context.Context, src string, hint Format) (io.Reader, Format, func
 // are decoded instead of being held while the reader waits for the next
 // member's header to appear.
 func Decompress(r io.Reader, live bool) (*bufio.Reader, error) {
+	br, _, err := decompress(r, live, false)
+	return br, err
+}
+
+// decompress with ahead set decodes gzip on its own goroutine; the caller
+// must close the returned reader once it stops reading.
+func decompress(r io.Reader, live, ahead bool) (*bufio.Reader, *aheadReader, error) {
 	br := bufio.NewReaderSize(r, 1<<20)
+	var ra *aheadReader
 	magic, _ := br.Peek(2)
 	switch {
 	case len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b:
 		gz, err := gzip.NewReader(br)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if live {
+		switch {
+		case live:
 			gz.Multistream(false)
 			br = bufio.NewReaderSize(&liveGzip{src: br, gz: gz}, 1<<20)
-		} else {
+		case ahead:
+			ra = readAhead(gz)
+			br = bufio.NewReaderSize(ra, 1<<20)
+		default:
 			br = bufio.NewReaderSize(gz, 1<<20)
 		}
 	case len(magic) == 2 && magic[0] == 0x28 && magic[1] == 0xb5: // zstd
 		zr, err := zstd.NewReader(br)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		br = bufio.NewReaderSize(zr, 1<<20)
 	}
@@ -166,7 +188,82 @@ func Decompress(r io.Reader, live bool) (*bufio.Reader, error) {
 		br.Discard(2)
 		br = bufio.NewReaderSize(newUTF16Reader(br, bom[0] == 0xfe), 1<<20)
 	}
-	return br, nil
+	return br, ra, nil
+}
+
+// aheadReader keeps a few decoded chunks in front of its reader, so
+// decompression and parsing run on separate cores.
+type aheadReader struct {
+	full chan aheadChunk
+	free chan []byte
+	done chan struct{}
+	once sync.Once
+	err  error
+	cur  aheadChunk
+	off  int
+}
+
+type aheadChunk struct {
+	b   []byte
+	err error
+}
+
+const aheadChunks = 8
+
+func readAhead(r io.Reader) *aheadReader {
+	a := &aheadReader{full: make(chan aheadChunk, aheadChunks), free: make(chan []byte, aheadChunks+1), done: make(chan struct{})}
+	for range aheadChunks + 1 {
+		a.free <- make([]byte, 256<<10)
+	}
+	go a.fill(r)
+	return a
+}
+
+func (a *aheadReader) fill(r io.Reader) {
+	for {
+		var b []byte
+		select {
+		case b = <-a.free:
+		case <-a.done:
+			return
+		}
+		n, err := r.Read(b)
+		select {
+		case a.full <- aheadChunk{b[:n], err}:
+		case <-a.done:
+			return
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (a *aheadReader) Read(p []byte) (int, error) {
+	for a.off == len(a.cur.b) {
+		if a.cur.err != nil {
+			return 0, a.cur.err
+		}
+		if a.cur.b != nil {
+			a.free <- a.cur.b[:cap(a.cur.b)]
+		}
+		select {
+		case a.cur = <-a.full:
+			a.off = 0
+		case <-a.done:
+			return 0, a.err
+		}
+	}
+	n := copy(p, a.cur.b[a.off:])
+	a.off += n
+	return n, nil
+}
+
+func (a *aheadReader) close(err error) {
+	a.once.Do(func() {
+		a.err = err
+		close(a.done)
+	})
 }
 
 // liveGzip reads a growing gzip file member by member. Go's reader would

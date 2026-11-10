@@ -18,7 +18,9 @@ const (
 	batchFlush = 20 * time.Millisecond
 )
 
-func ordered[T any](in *Table, f func(Row) T, emit func(Row, T) bool) {
+// ordered runs f over head and then every row of in on all cores, in
+// batches, and calls emit with each result in input order.
+func ordered[T any](in *Table, head []Row, f func(Row) T, emit func(Row, T) bool) {
 	type batch struct {
 		rows []Row
 		res  []T
@@ -51,56 +53,86 @@ func ordered[T any](in *Table, f func(Row) T, emit func(Row, T) bool) {
 		b := &batch{done: make(chan struct{})}
 		timer := time.NewTimer(time.Hour)
 		timer.Stop()
-		flush := func() bool {
+		hand := func() bool {
 			timer.Stop()
-			select {
-			case work <- b:
-			case <-ctx.Done():
-				return false
-			}
-			select {
-			case queue <- b:
-			case <-ctx.Done():
+			if !offer(ctx, work, b) || !offer(ctx, queue, b) {
 				return false
 			}
 			b = &batch{done: make(chan struct{})}
 			return true
+		}
+		add := func(r Row) bool {
+			if b.rows = append(b.rows, r); len(b.rows) == 1 {
+				timer.Reset(batchFlush)
+			}
+			return len(b.rows) < batchRows || hand()
+		}
+		for _, r := range head {
+			if !add(r) {
+				return
+			}
 		}
 		for {
 			select {
 			case r, ok := <-in.Rows:
 				if !ok {
 					if len(b.rows) > 0 {
-						flush()
+						hand()
 					}
 					return
 				}
-				if b.rows = append(b.rows, r); len(b.rows) == 1 {
-					timer.Reset(batchFlush)
-				}
-				if len(b.rows) == batchRows && !flush() {
+				if !add(r) {
 					return
 				}
 			case <-timer.C:
-				if !flush() {
+				if !hand() {
 					return
 				}
 			case <-ctx.Done():
+			drain:
+				for range cap(in.Rows) {
+					select {
+					case r, ok := <-in.Rows:
+						if !ok {
+							break drain
+						}
+						if !add(r) {
+							return
+						}
+					default:
+						break drain
+					}
+				}
+				if len(b.rows) > 0 {
+					hand()
+				}
 				return
 			}
 		}
 	}()
 	defer wg.Wait()
 	for b := range queue {
-		select {
-		case <-b.done:
-		case <-ctx.Done():
-			return
-		}
+		<-b.done
 		for i, r := range b.rows {
 			if !emit(r, b.res[i]) {
 				return
 			}
 		}
+	}
+}
+
+// offer hands v over the way Table.send does: rows read before a stop still
+// go through when there is room, and only a blocked handoff gives up.
+func offer[V any](ctx context.Context, ch chan<- V, v V) bool {
+	select {
+	case ch <- v:
+		return true
+	default:
+	}
+	select {
+	case ch <- v:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
