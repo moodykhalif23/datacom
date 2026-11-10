@@ -21,7 +21,7 @@ func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 	var hdr []string
 	var head []Row
 	if err == nil {
-		head, err = parseCSV(first, comma, trim)
+		head, err = parseCSV(ctx, first, comma, trim)
 		if len(head) > 0 {
 			hdr, head = head[0], head[1:]
 			hdr[0] = strings.TrimPrefix(hdr[0], "\uFEFF")
@@ -62,7 +62,7 @@ func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 			go func() {
 				defer wg.Done()
 				for p := range work {
-					p.rows, p.err = parseCSV(p.b, comma, trim)
+					p.rows, p.err = parseCSV(t.run.ctx, p.b, comma, trim)
 					src.recycle(p.b)
 					close(p.done)
 				}
@@ -72,7 +72,7 @@ func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 		go func() {
 			defer close(queue)
 			defer close(work)
-			for {
+			for t.run.ctx.Err() == nil {
 				b, err := src.next(csvPiece)
 				p := &piece{b: b, err: err, done: make(chan struct{})}
 				if b == nil {
@@ -103,7 +103,8 @@ func readCSV(ctx context.Context, r io.Reader, comma rune) *Table {
 	return t
 }
 
-func parseCSV(b []byte, comma rune, trim bool) ([]Row, error) {
+// parseCSV gives up early once ctx is done; the rows are dropped then anyway.
+func parseCSV(ctx context.Context, b []byte, comma rune, trim bool) ([]Row, error) {
 	cr := csv.NewReader(bytes.NewReader(b))
 	cr.FieldsPerRecord = -1
 	cr.LazyQuotes = true
@@ -118,12 +119,14 @@ func parseCSV(b []byte, comma rune, trim bool) ([]Row, error) {
 		if err != nil {
 			return rows, err
 		}
-		rows = append(rows, rec)
+		if rows = append(rows, rec); len(rows)%256 == 0 && ctx.Err() != nil {
+			return nil, nil
+		}
 	}
 }
 
 // csvPiece is roughly how many bytes each parser gets at a time.
-const csvPiece = 512 << 10
+const csvPiece = 64 << 10
 
 // csvPieces cuts its input into runs of whole records.
 type csvPieces struct {
