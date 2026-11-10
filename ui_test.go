@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -201,5 +202,84 @@ func TestDownloadName(t *testing.T) {
 		if got := downloadName(in[0], in[1], in[2], in[3]); got != want {
 			t.Errorf("downloadName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestUITrainingDataAndParts(t *testing.T) {
+	s, err := newUIServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	srv := httptest.NewServer(s.handler())
+	defer srv.Close()
+	c := &uiClient{t, srv.URL, s.token}
+
+	words := strings.Fields("river market morning garden letter window station harvest teacher village bridge summer office kitchen doctor winter library colour forest engine island planet signal travel basket candle meadow pocket ladder mirror rabbit saddle tunnel violin wagon anchor blanket castle dragon")
+	doc := func(seed uint64) string {
+		r := rand.New(rand.NewPCG(seed, 1))
+		out := make([]string, 60)
+		for i := range out {
+			out[i] = words[r.IntN(len(words))]
+		}
+		return strings.Join(out, " ")
+	}
+	near := doc(3)
+	near = near[:strings.LastIndex(near, " ")] + " harbour"
+	line := func(body string) string {
+		b, _ := json.Marshal(map[string]string{"body": body})
+		return string(b) + "\n"
+	}
+	dir := t.TempDir()
+	os.WriteFile(dir+"/a.ndjson", []byte(line(doc(0))+line(doc(1))+line("<p>"+doc(2)+"</p>")+line(doc(3))+line(doc(4))+line(doc(5))+line("far too short")), 0o644)
+	os.WriteFile(dir+"/b.ndjson", []byte(line(doc(1))+line(near)+line(doc(6))+line(doc(7))), 0o644)
+	test := strings.Join(strings.Fields(doc(5))[20:36], " ")
+	os.WriteFile(dir+"/eval.jsonl", []byte(line(test)), 0o644)
+
+	cols := c.post("/api/columns", map[string]any{"source": dir + "/*.ndjson"})
+	if toStrings(cols["columns"])[0] != "body" || cols["files"] != 2.0 {
+		t.Fatalf("columns of a pattern: %v", cols)
+	}
+
+	out := dir + "/out"
+	id := c.post("/api/run", map[string]any{
+		"cmd": "clean", "source": dir + "/*.ndjson", "name": "a.ndjson", "format": "ndjson", "dedupe": true,
+		"text": []string{"body"}, "quality": "min-words=20,stopwords=0", "near_dupes": 0.8,
+		"decontam": []string{dir + "/eval.jsonl"}, "folder": out, "workers": 2, "log": dir + "/runs.jsonl",
+	})["id"].(string)
+	st := c.wait(id)
+	if st["error"] != nil {
+		t.Fatalf("run: %v", st["error"])
+	}
+	counts := st["report"].(map[string]any)["counts"].(map[string]any)
+	for _, k := range []string{"text:html", "dropped:quality:min-words", "dropped:near-dupes", "dropped:decontam:1"} {
+		if counts[k] != 1.0 {
+			t.Errorf("%s = %v, want 1", k, counts[k])
+		}
+	}
+	if rep := st["report"].(map[string]any); rep["rows_duplicate_dropped"] != 1.0 || rep["rows_out"] != 7.0 {
+		t.Errorf("report: %v", rep)
+	}
+	parts, _ := st["parts"].([]any)
+	if len(parts) != 2 || st["folder"] != out || st["download"] != nil {
+		t.Fatalf("parts: %v", st)
+	}
+	first := parts[0].(map[string]any)
+	if b, err := os.ReadFile(first["path"].(string)); err != nil || strings.Count(string(b), "\n") != int(first["rows"].(float64)) || strings.Contains(string(b), "<p>") {
+		t.Fatalf("first part %v: %v\n%s", first, err, b)
+	}
+	if pv := st["preview"].(map[string]any); toStrings(pv["header"])[0] != "body" || len(pv["rows"].([]any)) != int(first["rows"].(float64)) {
+		t.Fatalf("preview: %v", pv)
+	}
+	if code, _ := c.do("GET", "/api/job/"+id+"/download", nil, ""); code != http.StatusConflict {
+		t.Fatalf("download of a folder run: %d", code)
+	}
+	if b, err := os.ReadFile(dir + "/runs.jsonl"); err != nil || !strings.Contains(string(b), `"rows_out":7`) {
+		t.Fatalf("log: %v %s", err, b)
+	}
+
+	id = c.post("/api/run", map[string]any{"cmd": "convert", "sources": []string{dir + "/a.ndjson", dir + "/b.ndjson"}, "name": "a.ndjson", "format": "csv"})["id"].(string)
+	if st = c.wait(id); st["error"] != nil || st["report"].(map[string]any)["rows_in"] != 11.0 || st["filename"] != "a.csv" {
+		t.Fatalf("several sources: %v", st)
 	}
 }

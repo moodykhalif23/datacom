@@ -12,8 +12,9 @@ var nullWords = map[string]bool{
 }
 
 // IsNull reports whether a raw value should be treated as missing.
-func IsNull(s string) bool {
-	s = strings.TrimSpace(s)
+func IsNull(s string) bool { return nullWord(strings.TrimSpace(s)) }
+
+func nullWord(s string) bool {
 	if len(s) > 9 { // longer than any null word
 		return false
 	}
@@ -203,10 +204,10 @@ func normalize(s string, k Kind) (string, bool) {
 // normalizeWith is normalize with the country calling code used for
 // national phone numbers ("" leaves them national).
 func normalizeWith(s string, k Kind, country string) (string, bool) {
-	if IsNull(s) {
+	t := strings.TrimSpace(s)
+	if nullWord(t) {
 		return "", true
 	}
-	t := strings.TrimSpace(s)
 	switch k {
 	case KindPhone:
 		if p, ok := NormalizePhone(t, country); ok {
@@ -300,19 +301,28 @@ func isoDate(s string) (y, m, d int, ok bool) {
 // phoneDigits returns the digits of a phone number written with the usual
 // separators, and whether it was in international form (a + or 00 prefix).
 func phoneDigits(s string) (digits string, intl, ok bool) {
-	var b strings.Builder
+	start, plain := 0, true
 	for i := 0; i < len(s); i++ {
 		switch c := s[i]; {
 		case c >= '0' && c <= '9':
-			b.WriteByte(c)
 		case c == '+' && i == 0:
-			intl = true
+			intl, start = true, 1
 		case c == ' ' || c == '-' || c == '.' || c == '(' || c == ')':
+			plain = false
 		default:
 			return "", false, false
 		}
 	}
-	d := b.String()
+	d := s[start:]
+	if !plain {
+		b := make([]byte, 0, len(d))
+		for i := start; i < len(s); i++ {
+			if c := s[i]; c >= '0' && c <= '9' {
+				b = append(b, c)
+			}
+		}
+		d = string(b)
+	}
 	if !intl && strings.HasPrefix(d, "00") {
 		d, intl = d[2:], true
 	}
@@ -337,11 +347,14 @@ func isPhone(s string) bool {
 // calling code, national forms become international: "0712345678",
 // "712345678" and "254712345678" all become "+254712345678".
 func NormalizePhone(s, country string) (string, bool) {
-	d, intl, ok := phoneDigits(strings.TrimSpace(s))
+	t := strings.TrimSpace(s)
+	d, intl, ok := phoneDigits(t)
 	if !ok {
 		return s, false
 	}
 	switch {
+	case intl && len(t) == len(d)+1:
+		return t, true
 	case intl:
 		return "+" + d, true
 	case country == "":

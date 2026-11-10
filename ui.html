@@ -8,7 +8,7 @@
 (() => {
   let t = null;
   try { t = localStorage.getItem("datacom-theme"); } catch {}
-  if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  if (t !== "light" && t !== "dark") t = "light";
   document.documentElement.dataset.theme = t;
 })();
 </script>
@@ -91,10 +91,10 @@ svg.i.lg { width: 26px; height: 26px; }
 .panel-head p { margin-top: 4px; font-size: 12px; line-height: 17px; color: var(--text-2); }
 .tabs { display: flex; justify-content: space-between; margin: 0 20px 4px; padding: 3px; background: var(--app); border-radius: var(--r-md); overflow-x: auto; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
-.tab { padding: 6px 7px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font: 500 13px/20px var(--sans); white-space: nowrap; cursor: pointer; }
+.tab { padding: 6px 5px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font: 500 12.5px/20px var(--sans); white-space: nowrap; cursor: pointer; }
 .tab:hover { color: var(--text); }
 .tab[aria-selected=true] { background: var(--hover); color: var(--text); }
-.tab .n { margin-left: 3px; font-size: 11px; color: var(--cyan); }
+.tab .n { margin-left: 2px; font-size: 11px; color: var(--cyan); }
 .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 20px; padding: 16px 20px; overflow: auto; }
 .panel-foot { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 20px; border-top: 1px solid var(--line); background: var(--panel); }
 .saveas { display: flex; align-items: center; gap: 12px; }
@@ -102,6 +102,8 @@ svg.i.lg { width: 26px; height: 26px; }
 .actions { display: flex; gap: 8px; }
 .actions .primary { flex: 1; }
 .keys { font-size: 12px; color: var(--muted); text-align: center; }
+.more > .block:not([hidden]) + div { margin-top: 20px; }
+.check + .duo, details + .check { margin-top: 12px; }
 
 .work { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 20px 24px; overflow: hidden; }
 
@@ -309,8 +311,8 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
   <label class="tool" title="Watch"><input type="radio" name="cmd" value="watch"><span class="tile"><svg class="i"><use href="#i-watch"/></svg></span><span class="tool-text"><b>Watch</b><small>Follow a growing file</small></span></label>
   <p class="rail-note">Same engine as the command line, so results match exactly.</p>
   <div class="theme" role="group" aria-label="Colour theme">
-    <button type="button" id="themeLight" aria-pressed="false" title="Light mode"><svg class="i"><use href="#i-sun"/></svg><span>Light</span></button>
-    <button type="button" id="themeDark" aria-pressed="true" title="Dark mode"><svg class="i"><use href="#i-moon"/></svg><span>Dark</span></button>
+    <button type="button" id="themeLight" aria-pressed="true" title="Light mode"><svg class="i"><use href="#i-sun"/></svg><span>Light</span></button>
+    <button type="button" id="themeDark" aria-pressed="false" title="Dark mode"><svg class="i"><use href="#i-moon"/></svg><span>Dark</span></button>
   </div>
 </nav>
 
@@ -321,6 +323,7 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
   </div>
   <div class="tabs" id="tabs" role="tablist" aria-label="Options" hidden>
     <button class="tab" role="tab" data-tab="clean">Clean<span class="n"></span></button>
+    <button class="tab" role="tab" data-tab="text">Text<span class="n"></span></button>
     <button class="tab" role="tab" data-tab="rows">Rows<span class="n"></span></button>
     <button class="tab" role="tab" data-tab="columns">Columns<span class="n"></span></button>
     <button class="tab" role="tab" data-tab="calc">Calculate<span class="n"></span></button>
@@ -367,6 +370,35 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
       </div>
       <p class="help">Each match becomes [EMAIL], [PHONE], [ID] or [CARD]. A column named like national ID or phone is masked whole.</p>
       <p class="help">Numbers like “KES 1,250.00” become 1250, dates become 2025-01-15 and yes/no becomes true/false. Values that do not fit their column are kept as written and listed in the result.</p>
+    </div>
+
+    <div class="block" data-for="clean query watch" data-tab="text">
+      <span class="label">Clean document text in</span>
+      <div class="checks" id="textPick"></div>
+      <p class="help">For prose such as articles, posts and answers. Repairs garbled characters like “cafÃ©”, strips HTML, puts Unicode in one form and removes control characters, keeping paragraphs. The drops below look at these columns, or every column when none is ticked.</p>
+      <span class="label">Drop rows</span>
+      <label class="check"><input type="checkbox" id="quality"><span>Low-quality documents<span class="help">The Gopher rules: too few or too many words, odd word lengths, too many symbols or bullets, lines cut off with “…”, repeated lines, too few common words. Each rule’s count is reported.</span></span></label>
+      <details>
+        <summary>Change the rules</summary>
+        <input type="text" id="qualityRules" placeholder="min-words=20, stopwords=2" spellcheck="false">
+        <p class="help">Rules: <code>min-words</code>, <code>max-words</code>, <code>min-word-length</code>, <code>max-word-length</code>, <code>symbols</code>, <code>bullets</code>, <code>ellipsis</code>, <code>alpha</code>, <code>dup-lines</code>, <code>stopwords</code>. Set <code>stopwords=0</code> for languages other than English.</p>
+      </details>
+      <label class="check"><input type="checkbox" id="near"><span>Near-duplicates<span class="help">Rows whose text mostly repeats an earlier row. The index never grows past the memory set here.</span></span></label>
+      <div class="duo">
+        <div><label class="label" for="nearThreshold">How similar</label><input type="number" id="nearThreshold" min="0.5" max="1" step="0.05" value="0.8"></div>
+        <div><label class="label" for="nearMem">Memory, MB</label><input type="number" id="nearMem" min="1" value="256"></div>
+      </div>
+      <span class="label">Test sets to keep out</span>
+      <div class="list" id="tests"></div>
+      <div class="row">
+        <label class="btn secondary" for="testFile"><svg class="i"><use href="#i-upload"/></svg>Choose</label><input type="file" id="testFile" multiple hidden>
+        <input type="text" id="testPath" placeholder="or a path or web address" spellcheck="false">
+        <button class="btn secondary" id="useTestPath">Add</button>
+      </div>
+      <p class="status" id="testStatus" style="margin-top:8px"></p>
+      <label class="label" for="decontamN">Words in a row that count as overlap</label>
+      <input type="number" id="decontamN" class="short" min="3" value="13">
+      <p class="help">A row is dropped when it shares that many words in a row with any field of a test set, so evaluation data does not leak into training data. Each test set’s drops are counted.</p>
     </div>
 
     <div class="block" data-for="query watch" data-tab="rows">
@@ -430,6 +462,20 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
       <label class="label" for="joinRightKey">Its name in the other file, if different</label>
       <input type="text" id="joinRightKey" placeholder="same name" spellcheck="false">
     </div>
+    <details class="block more" data-for="profile clean query convert watch">
+      <summary>More saving options</summary>
+      <div class="block" data-for="clean query convert">
+        <label class="label" for="folder">Save into a folder instead</label>
+        <input type="text" id="folder" placeholder="like /data/clean or C:\data\clean" spellcheck="false">
+        <p class="help">Each source becomes its own part, such as part-00000.csv, and duplicates are removed across all parts. Leave it blank to download one file.</p>
+        <label class="label" for="workers">Files at once</label>
+        <input type="number" id="workers" class="short" min="0" placeholder="all cores">
+      </div>
+      <div>
+        <label class="label" for="logFile">Add the run report to a log file</label>
+        <input type="text" id="logFile" placeholder="none, or a path like runs.jsonl" spellcheck="false">
+      </div>
+    </details>
   </div>
 
   <div class="panel-foot">
@@ -462,14 +508,14 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
   <div class="start" id="startView">
     <div class="drop" id="drop">
       <div class="upl"><svg class="i lg"><use href="#i-upload"/></svg></div>
-      <h2>Drop a data file here</h2>
-      <p class="sub">Spreadsheets, exports and data files of any size. You can drop a file anywhere on this page.</p>
-      <label class="btn primary" for="file"><svg class="i"><use href="#i-upload"/></svg>Choose a file</label><input type="file" id="file" hidden>
+      <h2>Drop data files here</h2>
+      <p class="sub">Spreadsheets, exports and data files of any size. Drop several and they are read as one, in order.</p>
+      <label class="btn primary" for="file"><svg class="i"><use href="#i-upload"/></svg>Choose files</label><input type="file" id="file" multiple hidden>
       <div class="pathrow">
-        <input type="text" id="path" placeholder="Or paste a path or web address, like C:\Users\you\sales.csv" spellcheck="false">
+        <input type="text" id="path" placeholder="Or a path, a pattern or a web address, like C:\Users\you\sales.csv" spellcheck="false">
         <button class="btn secondary" id="usePath">Open</button>
       </div>
-      <p class="help">A typed path is read straight from disk with nothing copied, which suits very large files and is what Watch needs.</p>
+      <p class="help">A typed path is read straight from disk with nothing copied, which suits very large files and is what Watch needs. Patterns such as <code>logs/*.csv</code> or <code>exports/**/*.jsonl.gz</code> pick many files, and <code>s3://</code>, <code>gs://</code> and <code>hf://datasets/</code> read from cloud storage with your usual credentials.</p>
       <div class="chips"><span class="chip">CSV</span><span class="chip">TSV</span><span class="chip">JSON</span><span class="chip">NDJSON</span><span class="chip">Excel</span><span class="chip">ODS</span><span class="chip">Parquet</span><span class="chip">XML</span><span class="chip">Avro</span><span class="chip">.gz</span><span class="chip">.zst</span><span class="chip">.zip</span></div>
       <p class="status" id="fileStatus" role="status"></p>
       <button class="btn ghost" id="keepFile" hidden>Back</button>
@@ -511,7 +557,7 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
 "use strict";
 const TOKEN = "{{TOKEN}}";
 const $ = (id) => document.getElementById(id);
-const S = { source: "", name: "", columns: [], loadedSnake: false, job: null, jobCmd: "", lastRows: -1, lastChange: 0, tab: "rows", ran: false, join: { source: "", name: "" } };
+const S = { source: "", sources: [], name: "", columns: [], loadedSnake: false, job: null, jobCmd: "", lastRows: -1, lastChange: 0, tab: "rows", ran: false, join: { source: "", name: "" }, tests: [], lastTests: [] };
 
 const TOOLS = {
   profile: { title: "Summarize", run: "Summarize", desc: "See each column's type, how much is missing, the common values and any oddities. The file is not changed." },
@@ -613,19 +659,25 @@ function status(text, isError) {
   $("fileStatus").classList.toggle("bad", !!isError);
 }
 
-async function chooseFile(file) {
+async function chooseFiles(files) {
   showView("start");
-  status("Copying " + file.name + "…");
-  try {
-    const d = await upload(file, (p) => status("Copying " + file.name + "… " + Math.round(p * 100) + "%"));
-    await setSource(d.path, d.name);
-  } catch (e) { status("Could not copy " + file.name + ": " + e.message, true); }
+  const paths = [];
+  for (const [i, file] of files.entries()) {
+    const which = files.length > 1 ? " (" + (i + 1) + " of " + files.length + ")" : "";
+    status("Copying " + file.name + which + "…");
+    try {
+      const d = await upload(file, (p) => status("Copying " + file.name + which + "… " + Math.round(p * 100) + "%"));
+      paths.push(d);
+    } catch (e) { status("Could not copy " + file.name + ": " + e.message, true); return; }
+  }
+  if (paths.length === 1) await setSource(paths[0].path, paths[0].name);
+  else await setSource("", paths[0].name + " and " + (paths.length - 1) + " more", paths.map((d) => d.path), paths[0].name);
 }
 
-async function setSource(path, name) {
-  S.source = path; S.name = name; S.columns = []; S.ran = false;
+async function setSource(path, name, many, first) {
+  S.source = path; S.sources = many || []; S.name = name; S.first = first || name; S.columns = []; S.ran = false;
   $("noFile").hidden = true; $("openFile").hidden = false;
-  $("fileName").textContent = name; $("fileName").title = path;
+  $("fileName").textContent = name; $("fileName").title = many ? many.map(basename).join("\n") : path;
   $("fileMeta").textContent = "reading…";
   $("sheetRow").hidden = !/\.(xlsx|ods)(\.gz)?$/i.test(name);
   $("keepFile").textContent = "Back to " + name;
@@ -633,14 +685,15 @@ async function setSource(path, name) {
 }
 
 async function loadColumns(fresh) {
-  if (!S.source) return;
+  if (!S.source && !S.sources.length) return;
   status("Reading " + S.name + "…");
   try {
-    const d = await api("/api/columns", { source: S.source, input: $("input").value, sheet: $("sheet").value.trim(), snake: snakeOn() });
+    const d = await api("/api/columns", { source: S.source, sources: S.sources, input: $("input").value, sheet: $("sheet").value.trim(), snake: snakeOn() });
     S.columns = d.columns || [];
+    S.files = d.files || 1;
     S.loadedSnake = snakeOn();
     status("");
-    $("fileMeta").textContent = fmt(S.columns.length) + (S.columns.length === 1 ? " column" : " columns");
+    $("fileMeta").textContent = fmt(S.columns.length) + (S.columns.length === 1 ? " column" : " columns") + (S.files > 1 ? " · " + fmt(S.files) + " files" : "");
     $("keepFile").hidden = false;
     rebuildColumnControls();
     if (fresh || !$("startView").hidden) S.ran ? showView("result") : showReady();
@@ -652,12 +705,12 @@ async function loadColumns(fresh) {
   }
 }
 
-$("file").addEventListener("change", (e) => { if (e.target.files[0]) chooseFile(e.target.files[0]); e.target.value = ""; });
+$("file").addEventListener("change", (e) => { if (e.target.files.length) chooseFiles([...e.target.files]); e.target.value = ""; });
 window.addEventListener("dragover", (e) => { e.preventDefault(); $("drop").classList.add("over"); });
 window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("drop").classList.remove("over"); });
 window.addEventListener("drop", (e) => {
   e.preventDefault(); $("drop").classList.remove("over");
-  if (e.dataTransfer.files[0]) chooseFile(e.dataTransfer.files[0]);
+  if (e.dataTransfer.files.length) chooseFiles([...e.dataTransfer.files]);
 });
 const usePath = () => { const p = $("path").value.trim(); if (p) setSource(p, basename(p)); };
 $("usePath").addEventListener("click", usePath);
@@ -682,11 +735,11 @@ function showPanels() {
     p.hidden = !(mine && (!t.tabs || !p.dataset.tab || p.dataset.tab === S.tab));
   });
   if (!$("readyView").hidden) showReady();
-  if (S.source && snakeOn() !== S.loadedSnake) loadColumns(false);
+  if (S.name && snakeOn() !== S.loadedSnake) loadColumns(false);
   badges();
 }
 document.querySelectorAll("input[name=cmd]").forEach((r) => r.addEventListener("change", showPanels));
-$("snake").addEventListener("change", () => { if (S.source && snakeOn() !== S.loadedSnake) loadColumns(false); });
+$("snake").addEventListener("change", () => { if (S.name && snakeOn() !== S.loadedSnake) loadColumns(false); });
 const tabs = [...document.querySelectorAll(".tab")];
 tabs.forEach((b) => b.addEventListener("click", () => { S.tab = b.dataset.tab; showPanels(); }));
 $("tabs").addEventListener("keydown", (e) => {
@@ -699,6 +752,7 @@ $("tabs").addEventListener("keydown", (e) => {
 function badges() {
   const n = {
     clean: ["snake", "dedupe", "foldCase", "keepEmpty", "noTypes"].filter((id) => $(id).checked).length + ($("phone").value.trim() ? 1 : 0) + masks().length,
+    text: checked("textPick").length + ["quality", "near"].filter((id) => $(id).checked).length + S.tests.length,
     rows: filterRows().length + ($("whereRaw").value.trim() ? 1 : 0),
     columns: checked("columnsPick").length + Object.keys(parseRenames($("rename").value)).length,
     calc: deriveRows().filter((d) => d.name || d.expr).length,
@@ -733,6 +787,7 @@ function rebuildColumnControls() {
   document.querySelectorAll("#filters select.col, #aggs select.col").forEach((s) => fillColSelect(s, S.columns));
   fillColSelect($("joinKey"), S.columns);
   fillChecks("columnsPick", S.columns);
+  fillChecks("textPick", S.columns);
   fillChecks("groupPick", S.columns);
   refreshSort();
 }
@@ -823,6 +878,33 @@ $("joinFile").addEventListener("change", async (e) => {
   } catch (err) { $("joinStatus").textContent = "Could not copy " + file.name + ": " + err.message; }
   badges();
 });
+function addTest(source, name) {
+  if (S.tests.some((t) => t.source === source)) return;
+  const t = { source, name };
+  S.tests.push(t);
+  const row = el("div", { class: "row" }, el("span", { class: "grow", title: source }, name));
+  row.append(removeBtn(() => { S.tests = S.tests.filter((x) => x !== t); row.remove(); badges(); }));
+  $("tests").append(row);
+  badges();
+}
+$("testFile").addEventListener("change", async (e) => {
+  const files = [...e.target.files]; e.target.value = "";
+  for (const file of files) {
+    $("testStatus").textContent = "Copying " + file.name + "…";
+    try {
+      const d = await upload(file, (p) => { $("testStatus").textContent = "Copying " + file.name + "… " + Math.round(p * 100) + "%"; });
+      addTest(d.path, d.name);
+      $("testStatus").textContent = "";
+    } catch (err) { $("testStatus").textContent = "Could not copy " + file.name + ": " + err.message; return; }
+  }
+});
+$("useTestPath").addEventListener("click", () => {
+  const p = $("testPath").value.trim();
+  if (!p) return;
+  addTest(p, basename(p));
+  $("testPath").value = "";
+});
+
 $("useJoinPath").addEventListener("click", () => {
   const p = $("joinPath").value.trim();
   if (!p) return;
@@ -835,7 +917,7 @@ $("useJoinPath").addEventListener("click", () => {
 
 function buildRequest() {
   const c = cmd();
-  const req = { cmd: c, source: S.source, name: S.name, input: $("input").value, sheet: $("sheet").value.trim() };
+  const req = { cmd: c, source: S.source, sources: S.sources, name: S.first, input: $("input").value, sheet: $("sheet").value.trim(), log: $("logFile").value.trim() };
   if (c === "profile") { req.top = +$("top").value || 5; req.json = $("json").checked; }
   if (["clean", "query", "watch"].includes(c)) {
     req.snake = $("snake").checked; req.dedupe = $("dedupe").checked; req.fold_case = $("foldCase").checked;
@@ -843,6 +925,15 @@ function buildRequest() {
     req.phone = $("phone").value.trim();
     req.redact = masks();
     if (req.phone && !/^\+?\d{1,4}$/.test(req.phone)) throw new Error("The country code for phone numbers should be digits, like 254.");
+    req.text = checked("textPick");
+    if ($("quality").checked) req.quality = $("qualityRules").value.replace(/\s+/g, "") || "default";
+    if ($("near").checked) {
+      req.near_dupes = +$("nearThreshold").value;
+      req.near_mem = +$("nearMem").value || 0;
+      if (!(req.near_dupes > 0 && req.near_dupes <= 1)) throw new Error("How similar should be a number between 0.5 and 1, like 0.8.");
+    }
+    req.decontam = S.tests.map((t) => t.source);
+    req.decontam_n = +$("decontamN").value || 0;
   }
   if (["query", "watch"].includes(c)) {
     req.where = [];
@@ -882,7 +973,11 @@ function buildRequest() {
       req.on = r && r.toLowerCase() !== l.toLowerCase() ? l + "=" + r : l;
     }
   }
-  if (["clean", "query", "convert"].includes(c)) req.format = $("format").value;
+  if (["clean", "query", "convert"].includes(c)) {
+    req.format = $("format").value;
+    req.folder = $("folder").value.trim();
+    req.workers = +$("workers").value || 0;
+  }
   if (c === "watch") {
     req.every = $("every").value.trim() || "10s";
     req.idle = $("idle").value.trim();
@@ -905,13 +1000,13 @@ function busy(on) { $("run").disabled = on; $("stop").hidden = !on; $("busy").hi
 
 async function runJob() {
   if (S.job) return;
-  if (!S.source) { showView("start"); status("Open a file first: drop one here, choose one, or type its path.", true); return; }
+  if (!S.source && !S.sources.length) { showView("start"); status("Open a file first: drop one here, choose one, or type its path.", true); return; }
   let req;
   try { req = buildRequest(); } catch (e) { clearResults(); showError(e.message); return; }
   clearResults(); showView("result"); setPill("working", "Starting"); busy(true);
   try {
     const { id } = await api("/api/run", req);
-    S.job = id; S.jobCmd = req.cmd; S.lastRows = -1; S.lastChange = Date.now(); S.ran = true;
+    S.job = id; S.jobCmd = req.cmd; S.lastRows = -1; S.lastChange = Date.now(); S.ran = true; S.lastTests = S.tests.slice();
     poll();
   } catch (e) { busy(false); showError(e.message); }
 }
@@ -977,16 +1072,18 @@ function render(st) {
   if (r.join_unmatched) findings.push(fmt(r.join_unmatched) + " rows found no match in the other file, so their added columns are empty. Check the spelling and case of the matching column.");
   for (const n of r.notes || []) findings.push(n);
   const items = findings.map((f) => el("li", {}, icon("alert"), el("span", {}, f)));
-  const counts = r.counts || {};
-  const masked = [["email", "email"], ["phone", "phone number"], ["id", "ID number"], ["card", "card number"]]
-    .filter(([k]) => counts["masked:" + k]).map(([k, noun]) => fmt(counts["masked:" + k]) + " " + noun + (counts["masked:" + k] === 1 ? "" : "s"));
-  if (masked.length) items.push(el("li", { class: "ok" }, icon("check"), el("span", {}, "Masked " + masked.join(", ") + ".")));
-  if (!findings.length && !masked.length && S.jobCmd !== "profile") items.push(el("li", { class: "ok" }, icon("check"), el("span", {}, "Every value fit its column. Nothing to report.")));
+  const done = doneLines(r.counts || {}, st);
+  for (const line of done) items.push(el("li", { class: "ok" }, icon("check"), el("span", {}, line)));
+  if (!findings.length && !done.length && S.jobCmd !== "profile") items.push(el("li", { class: "ok" }, icon("check"), el("span", {}, "Every value fit its column. Nothing to report.")));
   $("findings").replaceChildren(...items);
 
   if (st.record) {
     $("record").href = st.record; $("record").download = st.record_name;
     $("record").hidden = false;
+  }
+  if (st.parts) {
+    $("summary").textContent = "Saved " + fmt(st.parts.length) + (st.parts.length === 1 ? " part" : " parts") + " in " + st.folder + ": " + st.parts.map((p) => basename(p.path) + " (" + fmt(p.rows) + " rows)").join(", ") + ".";
+    $("summary").hidden = false;
   }
   if (st.download) {
     $("download").href = st.download; $("download").download = st.filename;
@@ -996,12 +1093,41 @@ function render(st) {
   const pv = st.preview || {};
   if (pv.header) {
     const total = r.rows_out || 0, shown = (pv.rows || []).length;
-    $("caption").textContent = shown < total ? "The first " + fmt(shown) + " of " + fmt(total) + " rows" : shown ? "All " + fmt(shown) + " rows" : "The result has no rows.";
+    $("caption").textContent = st.parts ? (shown ? "The first " + fmt(shown) + " rows of " + basename(st.parts[0].path) : "The first part has no rows.")
+      : shown < total ? "The first " + fmt(shown) + " of " + fmt(total) + " rows" : shown ? "All " + fmt(shown) + " rows" : "The result has no rows.";
     $("caption").hidden = false;
     if (shown) renderTable(pv.header, pv.rows);
   } else if (pv.text !== undefined) {
     showText(pv.text);
   }
+}
+
+const plural = (n, one, many) => fmt(n) + " " + (n === 1 ? one : many || one + "s");
+const RULES = {
+  "min-words": "too few words", "max-words": "too many words", "word-length": "odd word length", symbols: "too many symbols",
+  bullets: "mostly bullet lines", ellipsis: "lines cut off with “…”", alpha: "too few real words", "dup-lines": "repeated lines", stopwords: "too few common words",
+};
+const TEXTFIX = [["encoding", "Windows-1252 text"], ["mojibake", "garbled characters"], ["html", "HTML"], ["unicode", "mixed Unicode forms"], ["control", "control characters"], ["whitespace", "messy spacing"]];
+
+// doneLines turns the run's counters into one line per thing that was changed or dropped.
+function doneLines(counts, st) {
+  const lines = [];
+  const masked = [["email", "email"], ["phone", "phone number"], ["id", "ID number"], ["card", "card number"]]
+    .filter(([k]) => counts["masked:" + k]).map(([k, noun]) => plural(counts["masked:" + k], noun));
+  if (masked.length) lines.push("Masked " + masked.join(", ") + ".");
+  const fixed = TEXTFIX.filter(([k]) => counts["text:" + k]).map(([k, what]) => what + " in " + fmt(counts["text:" + k]));
+  if (fixed.length) lines.push("Fixed documents with " + fixed.join(", ") + ".");
+  const rules = Object.keys(RULES).filter((k) => counts["dropped:quality:" + k]);
+  if (rules.length) {
+    const total = rules.reduce((n, k) => n + counts["dropped:quality:" + k], 0);
+    lines.push("Dropped " + plural(total, "low-quality document") + ": " + rules.map((k) => fmt(counts["dropped:quality:" + k]) + " " + RULES[k]).join(", ") + ".");
+  }
+  S.lastTests.forEach((t, i) => {
+    const n = counts["dropped:decontam:" + (i + 1)];
+    if (n) lines.push("Dropped " + plural(n, "row") + " that overlap the test set " + t.name + ".");
+  });
+  if (counts["dropped:near-dupes"]) lines.push("Dropped " + plural(counts["dropped:near-dupes"], "near-duplicate") + ".");
+  return lines;
 }
 
 function renderTable(header, rows) {
@@ -1023,8 +1149,7 @@ function setTheme(t, save) {
 }
 $("themeLight").addEventListener("click", () => setTheme("light", true));
 $("themeDark").addEventListener("click", () => setTheme("dark", true));
-matchMedia("(prefers-color-scheme: light)").addEventListener("change", (e) => { if (!savedTheme()) setTheme(e.matches ? "light" : "dark", false); });
-setTheme(document.documentElement.dataset.theme || "dark", false);
+setTheme(savedTheme() === "dark" ? "dark" : "light", false);
 
 showPanels();
 refreshSort();

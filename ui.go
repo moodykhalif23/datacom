@@ -212,10 +212,23 @@ func safeName(name string) string {
 }
 
 type sourceSpec struct {
-	Source string `json:"source"`
-	Name   string `json:"name"`
-	Input  string `json:"input"`
-	Sheet  string `json:"sheet"`
+	Source  string   `json:"source"`
+	Sources []string `json:"sources"`
+	Name    string   `json:"name"`
+	Input   string   `json:"input"`
+	Sheet   string   `json:"sheet"`
+}
+
+// list is every source the page named: several chosen files, or one path,
+// pattern or address.
+func (q sourceSpec) list() []string {
+	var out []string
+	for _, s := range append(q.Sources, q.Source) {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // columns reads only the header of a source, named as Clean would name it,
@@ -229,13 +242,18 @@ func (s *uiServer) columns(w http.ResponseWriter, r *http.Request) {
 		fail(w, err, http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(q.Source) == "" {
+	if len(q.list()) == 0 {
 		fail(w, errors.New("choose a file first"), http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	t, closeIn, err := open(ctx, opts{inFormat: q.Input, sheet: q.Sheet}, nil, q.Source, false)
+	srcs, err := pipeline.ExpandSources(ctx, q.list())
+	if err != nil {
+		fail(w, err, http.StatusBadRequest)
+		return
+	}
+	t, closeIn, err := open(ctx, opts{inFormat: q.Input, sheet: q.Sheet}, nil, srcs[0], false)
 	if err != nil {
 		fail(w, err, http.StatusBadRequest)
 		return
@@ -250,7 +268,7 @@ func (s *uiServer) columns(w http.ResponseWriter, r *http.Request) {
 	cancel()
 	for range t.Rows { // let every stage unwind before the source closes
 	}
-	reply(w, map[string]any{"columns": hdr})
+	reply(w, map[string]any{"columns": hdr, "files": len(srcs)})
 }
 
 type runRequest struct {
@@ -277,12 +295,22 @@ type runRequest struct {
 	JSON      bool     `json:"json"`
 	Every     string   `json:"every"`
 	Idle      string   `json:"idle"`
+	Text      []string `json:"text"`
+	Quality   string   `json:"quality"`
+	Decontam  []string `json:"decontam"`
+	DecontamN int      `json:"decontam_n"`
+	NearDupes float64  `json:"near_dupes"`
+	NearMem   int      `json:"near_mem"`
+	Folder    string   `json:"folder"`
+	Workers   int      `json:"workers"`
+	Log       string   `json:"log"`
 }
 
 // job is one run started from the page. The page polls it for progress and,
 // once done, for the report, a preview and the file to download.
 type job struct {
 	manifest string
+	folder   string // set when the result is written as parts into this folder
 	id       string
 	cmd      string
 	out      string
@@ -297,6 +325,7 @@ type job struct {
 	err     error
 	report  pipeline.RunReport
 	preview preview
+	parts   []outputRecord
 }
 
 type preview struct {
@@ -317,8 +346,14 @@ func (s *uiServer) start(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("unknown action %q", q.Cmd), http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(q.Source) == "" {
+	srcs := q.list()
+	if len(srcs) == 0 {
 		fail(w, errors.New("choose a file first"), http.StatusBadRequest)
+		return
+	}
+	folder := strings.TrimSpace(q.Folder)
+	if folder != "" && q.Cmd != "clean" && q.Cmd != "query" && q.Cmd != "convert" {
+		fail(w, errors.New("only Clean, Pick & total and Convert can save parts into a folder"), http.StatusBadRequest)
 		return
 	}
 	every := 10 * time.Second
@@ -359,18 +394,31 @@ func (s *uiServer) start(w http.ResponseWriter, r *http.Request) {
 		id: id, cmd: q.Cmd, format: format, mon: pipeline.NewMonitor(), start: time.Now(),
 		out:      filepath.Join(s.dir, "out-"+id+ext),
 		manifest: filepath.Join(s.dir, "run-"+id+".json"),
-		filename: downloadName(q.Name, q.Source, q.Cmd, ext),
+		filename: downloadName(q.Name, srcs[0], q.Cmd, ext),
+		folder:   folder,
 		done:     make(chan struct{}),
+	}
+	if folder != "" {
+		j.out = strings.TrimRight(folder, `/\`) + string(os.PathSeparator)
+	}
+	decontamN, nearMem := 13, 256
+	if q.DecontamN > 0 {
+		decontamN = q.DecontamN
+	}
+	if q.NearMem > 0 {
+		nearMem = q.NearMem
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	j.cancel = cancel
 	o := opts{
-		in: q.Source, out: j.out, format: string(format), inFormat: q.Input, sheet: q.Sheet,
+		in: srcs[0], inputs: srcs, out: j.out, format: string(format), inFormat: q.Input, sheet: q.Sheet,
 		quiet: true, snake: q.Snake, dedupe: q.Dedupe, keepEmpty: q.KeepEmpty, noTypes: q.NoTypes,
 		foldCase: q.FoldCase, phone: q.Phone, redact: strings.Join(q.Redact, ","), manifest: j.manifest,
 		join: q.Join, on: q.On, derive: q.Derive, where: q.Where, selectCols: q.Select,
 		group: q.Group, agg: q.Agg, sortKey: q.Sort, limit: q.Limit, top: q.Top, jsonReport: q.JSON,
 		every: every, idle: idle, mon: j.mon,
+		text: strings.Join(q.Text, ","), quality: q.Quality, decontam: strings.Join(q.Decontam, ","), decontamN: decontamN,
+		nearDupes: q.NearDupes, nearMem: nearMem, workers: q.Workers, logFile: strings.TrimSpace(q.Log),
 		onReport: func(rep pipeline.RunReport) {
 			j.mu.Lock()
 			j.report = rep
@@ -387,13 +435,32 @@ func (s *uiServer) start(w http.ResponseWriter, r *http.Request) {
 func (j *job) run(ctx context.Context, o opts) {
 	defer close(j.done)
 	err := run(ctx, j.cmd, o)
+	var parts []outputRecord
+	if err == nil && j.folder != "" {
+		if parts, err = j.writtenParts(); err == nil && len(parts) > 0 {
+			j.out = parts[0].Path
+		}
+	}
 	var pv preview
-	if err == nil {
+	if err == nil && (j.folder == "" || len(parts) > 0) {
 		pv, err = j.makePreview()
 	}
 	j.mu.Lock()
-	j.err, j.preview = err, pv
+	j.err, j.preview, j.parts = err, pv, parts
 	j.mu.Unlock()
+}
+
+// writtenParts lists the parts a folder run wrote, from its run record.
+func (j *job) writtenParts() ([]outputRecord, error) {
+	b, err := os.ReadFile(j.manifest)
+	if err != nil {
+		return nil, err
+	}
+	var m struct {
+		Outputs []outputRecord `json:"outputs"`
+	}
+	err = json.Unmarshal(b, &m)
+	return m.Outputs, err
 }
 
 // makePreview reads the output back through the same readers the tool uses,
@@ -471,9 +538,13 @@ func (s *uiServer) status(w http.ResponseWriter, r *http.Request) {
 		resp["record"] = "/api/job/" + j.id + "/record?token=" + s.token
 		resp["record_name"] = strings.TrimSuffix(j.filename, filepath.Ext(j.filename)) + "-record.json"
 	}
-	if j.err != nil {
+	switch {
+	case j.err != nil:
 		resp["error"] = j.err.Error()
-	} else {
+	case j.folder != "":
+		resp["folder"] = j.folder
+		resp["parts"] = j.parts
+	default:
 		resp["download"] = "/api/job/" + j.id + "/download?token=" + s.token
 		resp["filename"] = j.filename
 	}
@@ -501,6 +572,9 @@ func (s *uiServer) download(w http.ResponseWriter, r *http.Request) {
 	j.mu.Lock()
 	err := j.err
 	j.mu.Unlock()
+	if err == nil && j.folder != "" {
+		err = fmt.Errorf("the parts were saved in %s", j.folder)
+	}
 	if err != nil {
 		fail(w, err, http.StatusConflict)
 		return

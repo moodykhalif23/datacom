@@ -7,6 +7,7 @@ import (
 	"math"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -213,7 +214,7 @@ func (rep *Report) scanDuplicates(feed <-chan []Row, limit int64) {
 
 func (c *ColumnStats) add(v string, distinctCap int) {
 	v = strings.TrimSpace(v)
-	if IsNull(v) {
+	if nullWord(v) {
 		c.Nulls++
 		return
 	}
@@ -365,6 +366,10 @@ func (r *Report) WriteText(w io.Writer) {
 func numeric(v string, k Kind) (float64, bool) {
 	if k != KindInt && k != KindFloat {
 		return 0, false
+	}
+	if plainNumber(v, k) {
+		f, err := strconv.ParseFloat(v, 64)
+		return f, err == nil
 	}
 	return ParseFloat(v)
 }
