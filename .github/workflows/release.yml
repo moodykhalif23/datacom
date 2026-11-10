@@ -1,6 +1,8 @@
 # Pushing a tag such as v0.1.0-beta.2 builds the five platform binaries,
 # records signed build provenance, and publishes a GitHub release with
 # SHA256SUMS. Users verify with `sha256sum -c` and `gh attestation verify`.
+# The pypi job then builds the platform wheels and publishes them to PyPI
+# through trusted publishing, so no token is stored in the repository.
 name: release
 on:
   push:
@@ -34,3 +36,25 @@ jobs:
           flags=()
           case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" --title "$GITHUB_REF_NAME" --generate-notes dist/*
+  pypi:
+    needs: release
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build wheels
+        run: python3 tools/wheels.py "$GITHUB_REF_NAME"
+      - name: test the Linux wheel
+        run: |
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install --no-index dist/wheels/*manylinux*x86_64*.whl
+          cd /tmp && DATACOM_SAMPLE=$GITHUB_WORKSPACE/testdata/messy.csv /tmp/venv/bin/python -I $GITHUB_WORKSPACE/python/tests/test_datacom.py
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/wheels

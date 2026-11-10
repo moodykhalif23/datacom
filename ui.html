@@ -130,6 +130,7 @@ input[type=checkbox]:checked { border-color: var(--blue); background-color: var(
 .checks .check { margin: 0; font: 12.5px/18px var(--mono); min-width: 0; }
 .checks .check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .checks .status { grid-column: 1 / -1; }
+.masks .check { font: inherit; }
 .list { display: flex; flex-direction: column; gap: 8px; }
 .list:empty { display: none; }
 .row { display: flex; gap: 8px; align-items: center; }
@@ -357,6 +358,14 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
       <label class="label" for="phone">Country code for phone numbers</label>
       <input type="text" id="phone" class="short" placeholder="none" spellcheck="false">
       <p class="help">With 254, “0712 345 678” becomes +254712345678. Leave it blank to keep local numbers as they are.</p>
+      <span class="label">Mask personal data</span>
+      <div class="checks masks">
+        <label class="check"><input type="checkbox" class="mask" value="emails"><span>Emails</span></label>
+        <label class="check"><input type="checkbox" class="mask" value="phones"><span>Phone numbers</span></label>
+        <label class="check"><input type="checkbox" class="mask" value="ids"><span>ID numbers</span></label>
+        <label class="check"><input type="checkbox" class="mask" value="cards"><span>Card numbers</span></label>
+      </div>
+      <p class="help">Each match becomes [EMAIL], [PHONE], [ID] or [CARD]. A column named like national ID or phone is masked whole.</p>
       <p class="help">Numbers like “KES 1,250.00” become 1250, dates become 2025-01-15 and yes/no becomes true/false. Values that do not fit their column are kept as written and listed in the result.</p>
     </div>
 
@@ -481,6 +490,7 @@ pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto;
       <h2>Result</h2>
       <span class="pill t-idle" id="pill">Ready</span>
       <span class="grow"></span>
+      <a class="btn ghost" id="record" href="#" hidden title="Checksums, every rule applied and what it changed">Run record</a>
       <a class="btn secondary" id="download" href="#" hidden><svg class="i"><use href="#i-download"/></svg><span id="downloadLabel">Download</span></a>
     </div>
     <div class="bar-run" id="busy" hidden></div>
@@ -688,7 +698,7 @@ $("tabs").addEventListener("keydown", (e) => {
 
 function badges() {
   const n = {
-    clean: ["snake", "dedupe", "foldCase", "keepEmpty", "noTypes"].filter((id) => $(id).checked).length + ($("phone").value.trim() ? 1 : 0),
+    clean: ["snake", "dedupe", "foldCase", "keepEmpty", "noTypes"].filter((id) => $(id).checked).length + ($("phone").value.trim() ? 1 : 0) + masks().length,
     rows: filterRows().length + ($("whereRaw").value.trim() ? 1 : 0),
     columns: checked("columnsPick").length + Object.keys(parseRenames($("rename").value)).length,
     calc: deriveRows().filter((d) => d.name || d.expr).length,
@@ -717,6 +727,7 @@ function fillChecks(id, cols) {
 }
 
 const checked = (id) => [...$(id).querySelectorAll("input:checked")].map((i) => i.value);
+const masks = () => [...document.querySelectorAll(".mask:checked")].map((i) => i.value);
 
 function rebuildColumnControls() {
   document.querySelectorAll("#filters select.col, #aggs select.col").forEach((s) => fillColSelect(s, S.columns));
@@ -830,6 +841,7 @@ function buildRequest() {
     req.snake = $("snake").checked; req.dedupe = $("dedupe").checked; req.fold_case = $("foldCase").checked;
     req.keep_empty = $("keepEmpty").checked; req.no_types = $("noTypes").checked;
     req.phone = $("phone").value.trim();
+    req.redact = masks();
     if (req.phone && !/^\+?\d{1,4}$/.test(req.phone)) throw new Error("The country code for phone numbers should be digits, like 254.");
   }
   if (["query", "watch"].includes(c)) {
@@ -881,7 +893,7 @@ function buildRequest() {
 
 function setPill(tone, text) { $("pill").className = "pill t-" + tone; $("pill").textContent = text; }
 function clearResults() {
-  for (const id of ["error", "summary", "download", "caption", "tableWrap", "text"]) $(id).hidden = true;
+  for (const id of ["error", "summary", "download", "record", "caption", "tableWrap", "text"]) $(id).hidden = true;
   $("stats").replaceChildren(); $("findings").replaceChildren(); $("progress").textContent = "";
 }
 function showError(msg) {
@@ -965,9 +977,17 @@ function render(st) {
   if (r.join_unmatched) findings.push(fmt(r.join_unmatched) + " rows found no match in the other file, so their added columns are empty. Check the spelling and case of the matching column.");
   for (const n of r.notes || []) findings.push(n);
   const items = findings.map((f) => el("li", {}, icon("alert"), el("span", {}, f)));
-  if (!items.length && c !== "profile") items.push(el("li", { class: "ok" }, icon("check"), el("span", {}, "Every value fit its column. Nothing to report.")));
+  const counts = r.counts || {};
+  const masked = [["email", "email"], ["phone", "phone number"], ["id", "ID number"], ["card", "card number"]]
+    .filter(([k]) => counts["masked:" + k]).map(([k, noun]) => fmt(counts["masked:" + k]) + " " + noun + (counts["masked:" + k] === 1 ? "" : "s"));
+  if (masked.length) items.push(el("li", { class: "ok" }, icon("check"), el("span", {}, "Masked " + masked.join(", ") + ".")));
+  if (!findings.length && !masked.length && S.jobCmd !== "profile") items.push(el("li", { class: "ok" }, icon("check"), el("span", {}, "Every value fit its column. Nothing to report.")));
   $("findings").replaceChildren(...items);
 
+  if (st.record) {
+    $("record").href = st.record; $("record").download = st.record_name;
+    $("record").hidden = false;
+  }
   if (st.download) {
     $("download").href = st.download; $("download").download = st.filename;
     $("downloadLabel").textContent = "Download " + st.filename;

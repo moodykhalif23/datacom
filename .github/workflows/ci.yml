@@ -21,10 +21,16 @@ jobs:
         run: go test -race ./...
       - name: fuzz smoke
         run: |
-          for f in FuzzReadCSV FuzzReadJSON FuzzValues; do
+          for f in FuzzReadCSV FuzzReadJSON FuzzValues FuzzRedactText FuzzCleanText; do
             go test ./pipeline/ -run '^$' -fuzz="^$f\$" -fuzztime=15s
           done
       - name: known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
       - name: build
         run: go build -ldflags="-s -w" -o datacom . && ./datacom version
+      - name: python wheel
+        run: |
+          python3 tools/wheels.py 0.0.0-dev linux/amd64
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install --no-index dist/wheels/*.whl
+          cd /tmp && DATACOM_SAMPLE=$GITHUB_WORKSPACE/testdata/messy.csv /tmp/venv/bin/python -I $GITHUB_WORKSPACE/python/tests/test_datacom.py

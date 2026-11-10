@@ -124,6 +124,7 @@ func (s *uiServer) handler() http.Handler {
 	mux.HandleFunc("GET /api/job/{id}", s.status)
 	mux.HandleFunc("POST /api/job/{id}/cancel", s.cancel)
 	mux.HandleFunc("GET /api/job/{id}/download", s.download)
+	mux.HandleFunc("GET /api/job/{id}/record", s.record)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if strings.HasPrefix(r.URL.Path, "/api/") &&
@@ -262,6 +263,7 @@ type runRequest struct {
 	NoTypes   bool     `json:"no_types"`
 	FoldCase  bool     `json:"fold_case"`
 	Phone     string   `json:"phone"`
+	Redact    []string `json:"redact"`
 	Join      string   `json:"join"`
 	On        string   `json:"on"`
 	Derive    []string `json:"derive"`
@@ -280,6 +282,7 @@ type runRequest struct {
 // job is one run started from the page. The page polls it for progress and,
 // once done, for the report, a preview and the file to download.
 type job struct {
+	manifest string
 	id       string
 	cmd      string
 	out      string
@@ -355,6 +358,7 @@ func (s *uiServer) start(w http.ResponseWriter, r *http.Request) {
 	j := &job{
 		id: id, cmd: q.Cmd, format: format, mon: pipeline.NewMonitor(), start: time.Now(),
 		out:      filepath.Join(s.dir, "out-"+id+ext),
+		manifest: filepath.Join(s.dir, "run-"+id+".json"),
 		filename: downloadName(q.Name, q.Source, q.Cmd, ext),
 		done:     make(chan struct{}),
 	}
@@ -363,7 +367,7 @@ func (s *uiServer) start(w http.ResponseWriter, r *http.Request) {
 	o := opts{
 		in: q.Source, out: j.out, format: string(format), inFormat: q.Input, sheet: q.Sheet,
 		quiet: true, snake: q.Snake, dedupe: q.Dedupe, keepEmpty: q.KeepEmpty, noTypes: q.NoTypes,
-		foldCase: q.FoldCase, phone: q.Phone,
+		foldCase: q.FoldCase, phone: q.Phone, redact: strings.Join(q.Redact, ","), manifest: j.manifest,
 		join: q.Join, on: q.On, derive: q.Derive, where: q.Where, selectCols: q.Select,
 		group: q.Group, agg: q.Agg, sortKey: q.Sort, limit: q.Limit, top: q.Top, jsonReport: q.JSON,
 		every: every, idle: idle, mon: j.mon,
@@ -463,6 +467,10 @@ func (s *uiServer) status(w http.ResponseWriter, r *http.Request) {
 	resp["seconds"] = j.report.Seconds
 	resp["report"] = j.report
 	resp["preview"] = j.preview
+	if _, err := os.Stat(j.manifest); err == nil {
+		resp["record"] = "/api/job/" + j.id + "/record?token=" + s.token
+		resp["record_name"] = strings.TrimSuffix(j.filename, filepath.Ext(j.filename)) + "-record.json"
+	}
 	if j.err != nil {
 		resp["error"] = j.err.Error()
 	} else {
@@ -499,6 +507,24 @@ func (s *uiServer) download(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", j.filename))
 	http.ServeFile(w, r, j.out)
+}
+
+// record serves the run manifest: checksums, rules applied and counts.
+func (s *uiServer) record(w http.ResponseWriter, r *http.Request) {
+	j := s.lookup(w, r)
+	if j == nil {
+		return
+	}
+	select {
+	case <-j.done:
+	default:
+		fail(w, errors.New("still running"), http.StatusConflict)
+		return
+	}
+	name := strings.TrimSuffix(j.filename, filepath.Ext(j.filename)) + "-record.json"
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	w.Header().Set("Content-Type", "application/json")
+	http.ServeFile(w, r, j.manifest)
 }
 
 // downloadName turns sales.csv.gz plus the action into sales-clean.csv.
