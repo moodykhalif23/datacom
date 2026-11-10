@@ -15,10 +15,7 @@ import (
 )
 
 func sniffDelimiter(br *bufio.Reader) rune {
-	head, _ := br.Peek(64 << 10)
-	if i := bytes.IndexByte(head, '\n'); i >= 0 {
-		head = head[:i]
-	}
+	head := firstLine(br)
 	counts := map[byte]int{}
 	quoted := false
 	for _, c := range head {
