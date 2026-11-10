@@ -1,20 +1,23 @@
 package pipeline
 
 import (
+	"context"
 	"runtime"
 	"sync"
 	"time"
 )
+
+type parallelKey struct{}
+
+func WithParallelism(ctx context.Context, n int) context.Context {
+	return context.WithValue(ctx, parallelKey{}, n)
+}
 
 const (
 	batchRows  = 64
 	batchFlush = 20 * time.Millisecond
 )
 
-// ordered runs f over the rows of in on every core and hands each result
-// to emit in input order, so a stage keeps its first-seen semantics while
-// the costly part runs in parallel. A partial batch is flushed after a
-// short pause, so slow live inputs are not held back.
 func ordered[T any](in *Table, f func(Row) T, emit func(Row, T) bool) {
 	type batch struct {
 		rows []Row
@@ -22,6 +25,9 @@ func ordered[T any](in *Table, f func(Row) T, emit func(Row, T) bool) {
 		done chan struct{}
 	}
 	workers := runtime.GOMAXPROCS(0)
+	if n, ok := in.run.ctx.Value(parallelKey{}).(int); ok && n > 0 {
+		workers = min(workers, n)
+	}
 	work := make(chan *batch, workers)
 	queue := make(chan *batch, workers*2)
 	ctx := in.run.ctx

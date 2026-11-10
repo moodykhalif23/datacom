@@ -89,6 +89,7 @@ func runParts(ctx context.Context, cmd string, o opts, srcs []string, mon *pipel
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	ctx = pipeline.WithParallelism(ctx, max(1, runtime.NumCPU()/min(workers, len(srcs))))
 	jobs := make(chan int)
 	var mu sync.Mutex
 	var first error
