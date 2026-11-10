@@ -89,6 +89,20 @@ Median of three runs (csvkit: one run). Peak resident memory in brackets.
 | tojson | 2.06 s (21 MB) |  | 1.37 s (410 MB) | 4.46 s (683 MB) | 6.06 s (31 MB) | n/a | 0.72 s (961 MB) | 15 s (21 MB) |
 | freq | 0.83 s (21 MB) |  | 0.31 s (75 MB) | 0.86 s (140 MB) | 0.88 s (32 MB) | 0.75 s (14 MB) | 0.21 s (206 MB) | 240 s (1259 MB) |
 
+### 10M rows gzipped, before and after parallel reading (2026-11-10)
+
+The same 303 MB `big.csv.gz` (10M messy rows, 1.2 GB unpacked), timed with
+the build before and after parallel CSV parsing, gzip read-ahead and the
+parallel clean and profile stages. The machine was shared, with a load of 5
+to 7 on its 8 threads, so these are medians of alternating runs. Decoding the
+single gzip stream alone takes about 10 s there, which is now the floor.
+
+| command | before | after |
+|---|---:|---:|
+| `profile -json` | 19.5 s | 12.3 s |
+| `clean -snake -dedupe -f csv` | 20.6 s | 13.3 s |
+| `clean -snake -f csv`, peak memory | 22 MB | 35 MB |
+
 ### 10M rows (1.2 GB messy, 1.2 GB clean), earlier build, datacom only
 
 | operation | datacom | datacom, normalization on |
@@ -106,7 +120,8 @@ Median of three runs (csvkit: one run). Peak resident memory in brackets.
 
 Reading the tables:
 
-- datacom's memory is flat at about 20 MB for everything that streams. `-dedupe`
+- datacom's memory is flat at about 20 MB for everything that streams (about
+  35 MB since reading went parallel). `-dedupe`
   holds one 8-byte hash per distinct row, `profile` holds its sketches and top
   values, and `-sort` holds every row.
 - Type normalization on an already-clean file costs 5 to 10 percent on top of

@@ -200,10 +200,18 @@ carries a token minted at startup, so another tab cannot drive the server.
   near-duplicate index and one loaded test set, so deduplication is global.
   Each part's parallel stages get a share of the cores rather than all of
   them.
-- **Parallel stages.** Quality, test-set overlap, near-duplicate signatures
-  and masking run their costly work in batches of 64 rows on every core and
-  hand results on in input order, so output matches a single-threaded run.
-  A partial batch is flushed after 20 ms so live inputs are not held back.
+- **Parallel stages.** Type normalization in Clean, quality, test-set
+  overlap, near-duplicate signatures and masking run their costly work in
+  batches of 64 rows on every core and hand results on in input order, so
+  output matches a single-threaded run. A partial batch is flushed after
+  20 ms so live inputs are not held back. Profile gives each worker a stride
+  of columns and sends every worker the same batches in order.
+- **Parallel reading.** CSV and TSV input is cut into pieces of about 64 KB
+  at record boundaries by a scanner that follows encoding/csv's quoting
+  rules, each piece is parsed by encoding/csv on a worker, and rows leave in
+  input order. A short read hands over whatever records are complete, so a
+  live feed is not held for a full piece. Gzip is decoded a few chunks ahead
+  on a goroutine of its own.
 - **Run record.** With `-manifest`, a ledger in the context records each
   source as it is opened: local files are hashed whole by a goroutine of
   their own, streams as they are read. Outputs are hashed through the writer

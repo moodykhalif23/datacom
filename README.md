@@ -56,8 +56,9 @@ Not everyone wants a terminal. The same binary has a browser interface for them:
 datacom ui
 ```
 
-It opens `http://127.0.0.1:7878`
+It opens `http://127.0.0.1:7878` 
 
+Every option the command line has is on the page. The Text tab cleans document columns and drops low-quality documents, near-duplicates and rows that overlap a test set. Several dropped files, a pattern such as `logs/*.csv` or an `s3://`, `gs://` or `hf://` address are read as one, and More saving options writes parts into a folder. Each run offers its record for download.
 
 Filters, totals and sorting are built from menus of the file's actual columns, so nobody has to learn the expression language, though a box for typing conditions by hand is there for those who do. Ctrl+Enter runs the current tool.
 
