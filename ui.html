@@ -6,294 +6,477 @@
 <title>datacom</title>
 <style>
 :root {
-  color-scheme: light;
-  --paper: #f7f6f2; --ink: #1d1d1b; --muted: #6b6960; --line: #cdc9bf; --line-soft: #e5e2d9;
-  --field: #fffdf9; --accent: #1f4e79; --accent-ink: #ffffff; --error: #8a2b1a; --error-bg: #fbeae6;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  color-scheme: dark;
+  --bar: #010101; --app: #0a0d12; --rail: #07090d; --panel: #0e131a; --raised: #141b24; --hover: #1a2330;
+  --line: #1e2835; --line-strong: #2c394b;
+  --text: #e7edf5; --text-2: #9aa7b8; --muted: #7a889c; --on-accent: #04121f;
+  --blue: #2f7bff; --cyan: #22b8f0; --green: #2bd576; --purple: #8b5cf6; --warn: #f5b941; --danger: #ff6b6b;
+  --grad: linear-gradient(90deg, #2f7bff, #2bd576);
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a889c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2304121f' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --paper: #1c1c1a; --ink: #ebe8e0; --muted: #a39f94; --line: #4b4942; --line-soft: #34332f;
-    --field: #242421; --accent: #93b8de; --accent-ink: #0f1519; --error: #f0a394; --error-bg: #3b2019;
-  }
-}
-* { box-sizing: border-box; }
-html { background: var(--paper); }
-body { margin: 0; padding-top: 64px; color: var(--ink); font: 16px/1.5 var(--sans); }
-main { max-width: 760px; margin: 0 auto; padding: 0 20px 72px; }
-header { max-width: 760px; margin: 0 auto; padding: 30px 20px 18px; border-bottom: 1px solid var(--line); }
-.bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; height: 64px; display: flex; align-items: center; padding: 0 16px; background: #010101; }
-.bar h1 { margin: 0; line-height: 0; }
-.bar img { display: block; height: 54px; width: auto; }
-.lede { margin: 10px 0 0; color: var(--muted); max-width: 60ch; }
-section { padding: 30px 0; border-bottom: 1px solid var(--line-soft); }
-h2 { margin: 0 0 4px; font: 400 23px/1.2 var(--serif); }
-h2 .n { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
-h2 + .help { margin-top: 0; margin-bottom: 18px; }
-p { margin: 10px 0; }
-.help { color: var(--muted); font-size: 14px; margin: 4px 0 0; }
-.help code { font: 13px var(--mono); background: var(--line-soft); padding: 1px 5px; border-radius: 3px; }
-label { display: block; font-weight: 600; margin: 14px 0 4px; }
-label.check { display: flex; gap: 10px; align-items: baseline; font-weight: 400; margin: 8px 0; }
-label.check .help { display: block; margin: 0; }
+* { box-sizing: border-box; scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--app); color: var(--text); font: 14px/1.5 var(--sans); }
+h1, h2, p { margin: 0; }
+a { color: var(--cyan); }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.grow { flex: 1; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.lg { width: 26px; height: 26px; }
+
+/* top bar */
+.bar { flex: 0 0 56px; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 16px; background: var(--bar); border-bottom: 1px solid #0d1117; min-width: 0; }
+.logo { display: block; width: 72px; height: 48px; flex: none; }
+.divider { width: 1px; height: 24px; background: var(--line-strong); flex: none; }
+.nofile { color: var(--muted); }
+.openfile { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.openfile svg { color: var(--cyan); }
+#fileName { font-weight: 500; min-width: 4em; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.mini { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.mini input, .mini select { height: 28px; width: auto; font-size: 12px; padding: 0 8px; }
+.mini input { width: 92px; }
+.mini select { padding-right: 26px; background-position: right 7px center; }
+.ver { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/* layout */
+.app { flex: 1; min-height: 0; display: grid; grid-template-columns: 232px 448px minmax(0, 1fr); }
+.rail { display: flex; flex-direction: column; gap: 4px; padding: 16px 8px; background: var(--rail); border-right: 1px solid var(--line); overflow: auto; }
+.rail-label { padding: 4px 12px 8px; font: 600 11px/16px var(--sans); letter-spacing: .6px; text-transform: uppercase; color: var(--muted); }
+.tool { position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-md); cursor: pointer; }
+.tool input { position: absolute; opacity: 0; pointer-events: none; }
+.tool .tile { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--r-sm); background: var(--raised); color: var(--text-2); }
+.tool b { display: block; font-weight: 500; color: var(--text-2); }
+.tool small { display: block; font-size: 12px; line-height: 17px; color: var(--muted); }
+.tool:hover { background: rgb(255 255 255 / .03); }
+.tool.on { background: var(--raised); box-shadow: inset 2px 0 0 var(--blue); }
+.tool.on .tile { background: var(--grad); color: var(--on-accent); }
+.tool.on b { color: var(--text); }
+.tool:has(input:focus-visible) { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.rail-note { margin-top: auto; padding: 0 12px; font-size: 12px; line-height: 17px; color: var(--muted); }
+
+.panel { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
+.panel-head { padding: 20px 20px 12px; }
+.panel-head h1 { font: 600 20px/28px var(--sans); letter-spacing: -.2px; }
+.panel-head p { margin-top: 4px; font-size: 12px; line-height: 17px; color: var(--text-2); }
+.tabs { display: flex; justify-content: space-between; margin: 0 20px 4px; padding: 3px; background: var(--app); border-radius: var(--r-md); overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { padding: 6px 7px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font: 500 13px/20px var(--sans); white-space: nowrap; cursor: pointer; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected=true] { background: var(--hover); color: var(--text); }
+.tab .n { margin-left: 3px; font-size: 11px; color: var(--cyan); }
+.panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 20px; padding: 16px 20px; overflow: auto; }
+.panel-foot { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 20px; border-top: 1px solid var(--line); background: var(--panel); }
+.saveas { display: flex; align-items: center; gap: 12px; }
+.saveas label { color: var(--text-2); white-space: nowrap; }
+.actions { display: flex; gap: 8px; }
+.actions .primary { flex: 1; }
+.keys { font-size: 12px; color: var(--muted); text-align: center; }
+
+.work { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 20px 24px; overflow: hidden; }
+
+/* controls */
+.label { display: block; margin: 0 0 8px; font: 600 11px/16px var(--sans); letter-spacing: .6px; text-transform: uppercase; color: var(--muted); }
+* + .label { margin-top: 20px; }
+.help { font-size: 12px; line-height: 17px; color: var(--muted); }
+* + .help { margin-top: 6px; }
+.help code, .sub code { padding: 1px 5px; border-radius: 4px; background: var(--raised); color: var(--text-2); font: 11.5px var(--mono); }
 input[type=text], input[type=number], select {
-  font: inherit; color: inherit; background: var(--field); border: 1px solid var(--line);
-  border-radius: 3px; padding: 7px 9px; width: 100%; max-width: 100%;
+  width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  background-color: var(--app); color: var(--text); font: inherit;
 }
-input[type=text]::placeholder { color: var(--muted); opacity: .8; }
-input.short { width: 9em; }
-select.col, select.cond, select.fn { width: auto; max-width: 100%; }
-input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button { font: inherit; cursor: pointer; border-radius: 3px; }
-button:disabled { opacity: .5; cursor: default; }
-.primary { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); padding: 10px 22px; font-weight: 600; }
-.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 7px 14px; }
-.linkish { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; }
-.linkish.x { text-decoration: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 4px; }
-a { color: var(--accent); }
-.inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.inline > input[type=text] { flex: 1 1 240px; }
-.drop { border: 1px dashed var(--line); background: var(--field); border-radius: 3px; padding: 30px 20px; text-align: center; }
-.drop.over { border-color: var(--accent); border-style: solid; }
-.drop p { margin: 0; }
-.drop label { display: inline; font-weight: 400; margin: 0; }
-.status { color: var(--muted); font-size: 14px; }
-.status.ok { color: var(--ink); }
-.choices { border-top: 1px solid var(--line-soft); }
-.choices label { display: grid; grid-template-columns: 22px 1fr; gap: 2px 10px; padding: 12px 0; margin: 0; border-bottom: 1px solid var(--line-soft); font-weight: 400; cursor: pointer; }
-.choices input { margin: 5px 0 0; }
-.choices b { font-weight: 600; }
-.choices span { grid-column: 2; color: var(--muted); font-size: 14px; }
-fieldset { border: 1px solid var(--line-soft); border-radius: 3px; padding: 6px 16px 16px; margin: 16px 0 0; min-width: 0; }
-legend { font-weight: 600; padding: 0 6px; }
-fieldset > .help:first-of-type { margin-top: 0; }
-.rows { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
-.rows .inline { gap: 8px; }
-.rows input[type=text] { flex: 1 1 140px; width: auto; }
-.rows .eq { color: var(--muted); }
-.checks { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 6px 0 0; }
-.checks label { font-weight: 400; margin: 0; display: flex; gap: 6px; align-items: baseline; }
-details { margin-top: 10px; }
-details summary { cursor: pointer; color: var(--accent); }
-details[open] summary { margin-bottom: 6px; }
-.panel[hidden] { display: none; }
-#results { margin-top: 20px; }
-#summary { font-size: 17px; }
-#findings { padding-left: 20px; margin: 8px 0 0; }
-#findings li { margin: 4px 0; }
-.button { display: inline-block; background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 8px 16px; text-decoration: none; font-weight: 600; margin-top: 10px; }
-.button:hover { border-color: var(--accent); }
-pre { font: 13px/1.45 var(--mono); background: var(--field); border: 1px solid var(--line-soft); border-radius: 3px; padding: 14px; overflow: auto; max-height: 600px; margin: 14px 0 0; }
-.tablewrap { overflow: auto; max-height: 480px; border: 1px solid var(--line-soft); border-radius: 3px; margin-top: 8px; }
-table { border-collapse: collapse; font: 13px/1.4 var(--mono); min-width: 100%; }
-th { text-align: left; position: sticky; top: 0; background: var(--paper); border-bottom: 1px solid var(--line); padding: 7px 10px; white-space: nowrap; }
-td { border-bottom: 1px solid var(--line-soft); padding: 5px 10px; white-space: nowrap; max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
-td.num, th.num { text-align: right; }
-td:empty::after { content: "—"; color: var(--line); }
-.caption { color: var(--muted); font-size: 14px; margin: 14px 0 0; }
-.error { color: var(--error); background: var(--error-bg); border: 1px solid var(--error); border-radius: 3px; padding: 10px 14px; margin-top: 16px; }
-footer { max-width: 760px; margin: 0 auto; padding: 18px 20px 40px; color: var(--muted); font-size: 13px; }
-@media (max-width: 560px) {
-  header { padding-top: 28px; }
-  .rows .inline > * { flex: 1 1 100%; }
-  select.col, select.cond, select.fn { width: 100%; }
+input::placeholder { color: var(--muted); }
+select { appearance: none; padding-right: 32px; background-image: var(--chev); background-repeat: no-repeat; background-position: right 10px center; background-size: 16px; }
+input.short { width: 120px; }
+input[type=checkbox] {
+  appearance: none; width: 16px; height: 16px; margin: 2px 0 0; flex: none; border: 1px solid var(--line-strong); border-radius: 4px;
+  background: var(--app) center / 12px no-repeat; cursor: pointer;
+}
+input[type=checkbox]:checked { border-color: var(--blue); background-color: var(--blue); background-image: var(--tick); }
+.check { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.check + .check { margin-top: 10px; }
+.check .help { display: block; margin-top: 2px; }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 12px; }
+.checks .check { margin: 0; font: 12.5px/18px var(--mono); min-width: 0; }
+.checks .check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.checks .status { grid-column: 1 / -1; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+.list:empty { display: none; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > input, .row > select { flex: 1 1 0; min-width: 0; }
+.row .eq { color: var(--muted); }
+.duo { display: flex; gap: 12px; }
+.duo > div { flex: 1; }
+details summary { color: var(--cyan); font-size: 13px; cursor: pointer; }
+details[open] summary { margin-bottom: 8px; }
+* + details { margin-top: 12px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px;
+  border: 1px solid transparent; border-radius: var(--r-md); background: none; color: var(--text);
+  font: 500 14px/1 var(--sans); text-decoration: none; white-space: nowrap; cursor: pointer;
+}
+.btn svg.i { width: 16px; height: 16px; }
+.btn.primary { background: var(--grad); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.secondary { background: var(--raised); border-color: var(--line-strong); }
+.btn.secondary:hover { background: var(--hover); }
+.btn.ghost { height: 32px; padding: 0 8px; color: var(--cyan); }
+.btn.ghost:hover { background: rgb(34 184 240 / .08); }
+.btn.big { height: 40px; }
+.btn.icon { width: 30px; height: 30px; padding: 0; flex: none; color: var(--muted); }
+.btn.icon:hover { color: var(--text); background: var(--raised); }
+.btn:disabled { opacity: .5; cursor: default; filter: none; }
+.add { align-self: flex-start; margin-top: 8px; }
+
+/* start, ready */
+.start, .ready { flex: 1; display: grid; place-items: center; overflow: auto; }
+.drop {
+  display: flex; flex-direction: column; align-items: center; gap: 16px; width: min(600px, 100%); padding: 40px 24px 32px;
+  border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: var(--panel); text-align: center;
+}
+.drop.over { border-style: solid; border-color: var(--cyan); background: #0f1a24; }
+.upl { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 14px; background: var(--grad); color: var(--on-accent); }
+.drop h2, .ready h2 { font: 600 20px/28px var(--sans); letter-spacing: -.2px; }
+.sub { max-width: 440px; color: var(--text-2); }
+.pathrow { display: flex; gap: 8px; width: 100%; }
+.pathrow input { flex: 1; min-width: 0; }
+.drop .help { max-width: 460px; margin: -6px 0 0; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.chip { padding: 3px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--raised); color: var(--text-2); font-size: 12px; }
+.chips.cols { justify-content: flex-start; margin-top: 16px; }
+.chips.cols .chip { font: 12px var(--mono); }
+.status { font-size: 13px; color: var(--text-2); }
+.status:empty { display: none; }
+.status.bad { color: var(--danger); }
+.note { font-size: 12px; color: var(--muted); }
+.ready-card { width: min(640px, 100%); padding: 28px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.ready-card p { margin-top: 6px; color: var(--text-2); }
+
+/* results */
+.result { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+.rhead { display: flex; align-items: center; gap: 12px; }
+.rhead h2 { font: 600 15px/22px var(--sans); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; line-height: 17px; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.t-done { color: var(--green); background: rgb(43 213 118 / .14); }
+.pill.t-working { color: var(--cyan); background: rgb(34 184 240 / .14); }
+.pill.t-working::before { animation: pulse 1s ease-in-out infinite alternate; }
+.pill.t-idle { color: var(--text-2); background: rgb(122 136 156 / .14); }
+.pill.t-error { color: var(--danger); background: rgb(255 107 107 / .14); }
+@keyframes pulse { to { opacity: .3; } }
+.bar-run { height: 2px; margin-top: -8px; overflow: hidden; border-radius: 2px; background: var(--line); }
+.bar-run::after { content: ""; display: block; width: 30%; height: 100%; background: var(--grad); animation: slide 1.2s linear infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.progress { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.progress:empty { display: none; }
+.summary { color: var(--text-2); }
+.error { padding: 10px 14px; border: 1px solid rgb(255 107 107 / .35); border-radius: var(--r-sm); background: rgb(255 107 107 / .08); color: var(--danger); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; }
+.stats:empty { display: none; }
+.stat { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.stat span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11px/16px var(--sans); letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
+.stat b { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 20px/28px var(--sans); letter-spacing: -.3px; font-variant-numeric: tabular-nums; }
+.findings { display: flex; flex-direction: column; gap: 8px; max-height: 28vh; margin: 0; padding: 0; overflow: auto; list-style: none; flex: none; }
+.findings:empty { display: none; }
+.findings li { display: flex; gap: 10px; padding: 8px 12px; border-radius: var(--r-sm); background: rgb(245 185 65 / .08); color: var(--text-2); }
+.findings li svg { width: 16px; height: 16px; margin-top: 2px; color: var(--warn); }
+.findings li.ok { background: rgb(43 213 118 / .08); }
+.findings li.ok svg { color: var(--green); }
+.caption { font-size: 12px; color: var(--muted); }
+.tablewrap { flex: 1; min-height: 120px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+table { min-width: 100%; border-collapse: separate; border-spacing: 0; font: 12.5px/18px var(--mono); }
+th { position: sticky; top: 0; padding: 7px 12px; border-bottom: 1px solid var(--line); background: var(--raised); color: var(--text-2); font-weight: 500; text-align: left; white-space: nowrap; }
+td { max-width: 320px; padding: 7px 12px; border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tbody tr:hover td { background: var(--raised); }
+th.num, td.num { text-align: right; }
+td:empty::after { content: "—"; color: var(--muted); }
+pre { flex: 1; min-height: 120px; margin: 0; padding: 14px 16px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); font: 12.5px/1.5 var(--mono); }
+
+@media (prefers-reduced-motion: reduce) { .bar-run::after, .pill.t-working::before { animation: none; } }
+@media (max-width: 1180px) {
+  .app { grid-template-columns: 76px 420px minmax(0, 1fr); }
+  .rail-label, .rail-note, .tool-text { display: none; }
+  .tool { justify-content: center; padding: 10px; }
+  .ver { display: none; }
+}
+@media (max-width: 860px) {
+  body { height: auto; overflow: auto; }
+  .bar { position: sticky; top: 0; z-index: 2; gap: 10px; padding: 0 12px; overflow-x: auto; }
+  .app { display: flex; flex-direction: column; }
+  .rail { flex-direction: row; padding: 8px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tool { flex: none; justify-content: flex-start; padding: 8px 12px 8px 8px; }
+  .tool-text { display: block; }
+  .tool small { display: none; }
+  .meta, .mini-t, .keys { display: none; }
+  .panel { border-right: 0; }
+  .panel-body { overflow: visible; }
+  .panel-foot { position: sticky; bottom: 0; z-index: 1; }
+  .work { overflow: visible; padding: 16px; }
+  .tablewrap, pre { max-height: 70vh; }
 }
 </style>
 </head>
 <body>
-<nav class="bar"><h1><img src="/logo.png" alt="datacom" width="81" height="54"></h1></nav>
-<header>
-  <p class="lede">Cleans up big, messy spreadsheets and data files. Nothing leaves your computer. This page only talks to the datacom program running on it.</p>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-profile" viewBox="0 0 24 24"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></symbol>
+  <symbol id="i-clean" viewBox="0 0 24 24"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></symbol>
+  <symbol id="i-query" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
+  <symbol id="i-convert" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></symbol>
+  <symbol id="i-watch" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3l14 9-14 9V3z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+</svg>
+
+<header class="bar">
+  <img class="logo" src="/logo.png" alt="datacom" width="72" height="48">
+  <span class="divider" aria-hidden="true"></span>
+  <span class="nofile" id="noFile">No file open</span>
+  <div class="openfile" id="openFile" hidden>
+    <svg class="i"><use href="#i-file"/></svg>
+    <b id="fileName"></b>
+    <span class="meta" id="fileMeta"></span>
+    <label class="mini" id="sheetRow" hidden><span class="mini-t">Sheet</span> <input type="text" id="sheet" placeholder="first" spellcheck="false" title="A sheet name or its number. Leave blank for the first sheet."></label>
+    <label class="mini"><span class="mini-t">Read as</span>
+      <select id="input" title="Change this only when the file type is not being detected">
+        <option value="auto">Detect</option>
+        <option value="csv">CSV</option>
+        <option value="tsv">TSV</option>
+        <option value="json">JSON</option>
+        <option value="ndjson">NDJSON</option>
+        <option value="xlsx">Excel</option>
+        <option value="ods">ODS</option>
+        <option value="parquet">Parquet</option>
+        <option value="xml">XML</option>
+        <option value="avro">Avro</option>
+      </select>
+    </label>
+    <button class="btn ghost" id="changeFile">Change</button>
+  </div>
+  <span class="grow"></span>
+  <span class="ver" title="{{VERSION}}">datacom {{VERSION_SHORT}} · runs on this computer</span>
 </header>
 
-<main>
-<section>
-  <h2><span class="n">1.</span>Your file</h2>
-  <p class="help">CSV, TSV, JSON, NDJSON, Excel (.xlsx) or Parquet, plain or gzipped.</p>
-  <div class="drop" id="drop">
-    <p><strong>Drop a file here</strong> or <label class="linkish" for="file">choose one</label><input type="file" id="file" hidden></p>
-  </div>
-  <label for="path">Or type where the file is</label>
-  <div class="inline">
-    <input type="text" id="path" placeholder="C:\Users\you\Downloads\sales.csv   or   https://example.org/data.csv.gz" spellcheck="false">
-    <button class="secondary" id="usePath">Use this</button>
-  </div>
-  <p class="help">Best for very large files (nothing is copied) and required for Watch. Web addresses work too.</p>
-  <div id="sheetRow" hidden>
-    <label for="sheet">Excel sheet</label>
-    <input type="text" id="sheet" placeholder="first sheet" class="short">
-    <p class="help">A sheet name or its number. Leave blank for the first sheet.</p>
-  </div>
-  <details>
-    <summary>The file type is not being detected</summary>
-    <label for="input">Treat the file as</label>
-    <select id="input">
-      <option value="auto">Detect from the name and contents</option>
-      <option value="csv">CSV (commas)</option>
-      <option value="tsv">TSV (tabs)</option>
-      <option value="json">JSON (an array of objects)</option>
-      <option value="ndjson">NDJSON (one JSON object per line)</option>
-      <option value="xlsx">Excel workbook</option>
-      <option value="parquet">Parquet</option>
-    </select>
-  </details>
-  <p class="status" id="fileStatus">No file chosen yet.</p>
-</section>
+<div class="app">
+<nav class="rail" aria-label="Tools">
+  <div class="rail-label">Tools</div>
+  <label class="tool on" title="Summarize"><input type="radio" name="cmd" value="profile" checked><span class="tile"><svg class="i"><use href="#i-profile"/></svg></span><span class="tool-text"><b>Summarize</b><small>What is in the file</small></span></label>
+  <label class="tool" title="Clean"><input type="radio" name="cmd" value="clean"><span class="tile"><svg class="i"><use href="#i-clean"/></svg></span><span class="tool-text"><b>Clean</b><small>Fix values, drop junk rows</small></span></label>
+  <label class="tool" title="Pick &amp; total"><input type="radio" name="cmd" value="query"><span class="tile"><svg class="i"><use href="#i-query"/></svg></span><span class="tool-text"><b>Pick &amp; total</b><small>Filter, calculate, group</small></span></label>
+  <label class="tool" title="Convert"><input type="radio" name="cmd" value="convert"><span class="tile"><svg class="i"><use href="#i-convert"/></svg></span><span class="tool-text"><b>Convert</b><small>Save in another format</small></span></label>
+  <label class="tool" title="Watch"><input type="radio" name="cmd" value="watch"><span class="tile"><svg class="i"><use href="#i-watch"/></svg></span><span class="tool-text"><b>Watch</b><small>Follow a growing file</small></span></label>
+  <p class="rail-note">Same engine as the command line, so results match exactly.</p>
+</nav>
 
-<section>
-  <h2><span class="n">2.</span>What do you want to do?</h2>
-  <div class="choices">
-    <label><input type="radio" name="cmd" value="profile" checked><b>Summarize</b><span>See what is in the file: each column's type, how much is missing, the common values, duplicates and oddities. Nothing is changed.</span></label>
-    <label><input type="radio" name="cmd" value="clean"><b>Clean</b><span>Fix numbers, dates, yes/no values and stray spaces; drop empty and duplicate rows; tidy column names. You get a new file.</span></label>
-    <label><input type="radio" name="cmd" value="query"><b>Pick, filter and total</b><span>Keep only some rows or columns, add calculated columns, sum or count by group, sort. Cleaning happens first.</span></label>
-    <label><input type="radio" name="cmd" value="convert"><b>Convert</b><span>Save the file as another type, for example Excel to CSV or CSV to Parquet. Values are copied exactly as they are.</span></label>
-    <label><input type="radio" name="cmd" value="watch"><b>Watch</b><span>Follow a file that is still being written to, and show a fresh summary every few seconds.</span></label>
+<section class="panel" aria-labelledby="toolTitle">
+  <div class="panel-head">
+    <h1 id="toolTitle">Summarize</h1>
+    <p id="toolDesc"></p>
   </div>
-</section>
-
-<section>
-  <h2><span class="n">3.</span>Options</h2>
-
-  <div class="panel" data-for="profile">
-    <label for="top">Common values to list for each column</label>
-    <input type="number" id="top" class="short" min="1" value="5">
-    <label class="check"><input type="checkbox" id="json">Give me the report as JSON instead of text</label>
+  <div class="tabs" id="tabs" role="tablist" aria-label="Options" hidden>
+    <button class="tab" role="tab" data-tab="clean">Clean<span class="n"></span></button>
+    <button class="tab" role="tab" data-tab="rows">Rows<span class="n"></span></button>
+    <button class="tab" role="tab" data-tab="columns">Columns<span class="n"></span></button>
+    <button class="tab" role="tab" data-tab="calc">Calculate<span class="n"></span></button>
+    <button class="tab" role="tab" data-tab="totals">Totals<span class="n"></span></button>
+    <button class="tab" role="tab" data-tab="sort">Sort<span class="n"></span></button>
+    <button class="tab" role="tab" data-tab="join">Join<span class="n"></span></button>
   </div>
 
-  <div class="panel" data-for="clean query watch">
-    <fieldset>
-      <legend>Cleaning</legend>
-      <p class="help">Numbers like “KES 1,250.00” become 1250, dates become 2025-01-15, yes/no become true/false, spacing is tidied. Values that do not fit their column are kept as written and reported.</p>
-      <label class="check"><input type="checkbox" id="snake"><span>Tidy column names <span class="help">lower-case with underscores: “Total Amount (KES)” becomes total_amount_kes</span></span></label>
-      <label class="check"><input type="checkbox" id="dedupe">Remove duplicate rows</label>
-      <label class="check"><input type="checkbox" id="keepEmpty">Keep rows that are completely empty</label>
-      <label class="check"><input type="checkbox" id="noTypes">Leave numbers, dates and yes/no values exactly as written</label>
-    </fieldset>
-  </div>
+  <div class="panel-body" id="panelBody">
+    <div class="block" data-for="watch">
+      <div class="duo">
+        <div><label class="label" for="every">New summary every</label><input type="text" id="every" value="10s" spellcheck="false"></div>
+        <div><label class="label" for="idle">Finish after no change for</label><input type="text" id="idle" value="30s" placeholder="never" spellcheck="false"></div>
+      </div>
+      <p class="help">Times look like 10s, 1m or 2m30s. Leave the second one blank to keep watching until you press Stop. Watch needs a typed path, because a copied file never grows. With no totals set, each window counts the new rows.</p>
+    </div>
 
-  <div class="panel" data-for="query watch">
-    <fieldset>
-      <legend>Keep only rows where…</legend>
-      <div class="rows" id="filters"></div>
-      <button class="linkish" id="addFilter">+ add a condition</button>
-      <p class="help">Every condition must hold. Text comparisons ignore letter case; numbers and dates compare as numbers and dates.</p>
+    <div class="block" data-for="profile">
+      <label class="label" for="top">Common values per column</label>
+      <input type="number" id="top" class="short" min="1" value="5">
+      <label class="check" style="margin-top:16px"><input type="checkbox" id="json"><span>Report as JSON instead of text</span></label>
+    </div>
+
+    <div class="block" data-for="convert">
+      <p class="help">Values are copied exactly as they are. Pick the format at the bottom and press Convert.</p>
+    </div>
+
+    <div class="block" data-for="clean query watch" data-tab="clean">
+      <span class="label">Cleaning</span>
+      <label class="check"><input type="checkbox" id="snake"><span>Tidy column names<span class="help">“Total Amount (KES)” becomes total_amount_kes</span></span></label>
+      <label class="check"><input type="checkbox" id="dedupe"><span>Remove duplicate rows</span></label>
+      <label class="check"><input type="checkbox" id="foldCase"><span>Respell values to their most common form<span class="help">PAID, Paid and paid become one value</span></span></label>
+      <label class="check"><input type="checkbox" id="keepEmpty"><span>Keep rows that are completely empty</span></label>
+      <label class="check"><input type="checkbox" id="noTypes"><span>Leave values exactly as written<span class="help">Turns off the number, date and yes/no fixes</span></span></label>
+      <label class="label" for="phone">Country code for phone numbers</label>
+      <input type="text" id="phone" class="short" placeholder="none" spellcheck="false">
+      <p class="help">With 254, “0712 345 678” becomes +254712345678. Leave it blank to keep local numbers as they are.</p>
+      <p class="help">Numbers like “KES 1,250.00” become 1250, dates become 2025-01-15 and yes/no becomes true/false. Values that do not fit their column are kept as written and listed in the result.</p>
+    </div>
+
+    <div class="block" data-for="query watch" data-tab="rows">
+      <span class="label">Keep only rows where</span>
+      <div class="list" id="filters"></div>
+      <button class="btn ghost add" id="addFilter"><svg class="i"><use href="#i-plus"/></svg>Add a condition</button>
+      <p class="help">Every condition must hold. Text ignores letter case; numbers and dates compare as numbers and dates.</p>
       <details>
         <summary>Write a condition by hand</summary>
         <input type="text" id="whereRaw" placeholder="amount > 1000 and status != refunded" spellcheck="false">
-        <p class="help">Examples: <code>name ~ ltd</code> (contains), <code>email =~ @gov\.ke$</code> (pattern), <code>phone not null</code>, <code>a > 1 and (b == x or c == y)</code>. Put a column name in square brackets if it has spaces: <code>[Txn Date] >= 2025-01-01</code>.</p>
+        <p class="help">For example <code>name ~ ltd</code> (contains), <code>email =~ @gov\.ke$</code> (pattern), <code>phone not null</code>, <code>a > 1 and (b == x or c == y)</code>. Put a name with spaces in square brackets: <code>[Txn Date] >= 2025-01-01</code>.</p>
       </details>
-    </fieldset>
+    </div>
 
-    <fieldset>
-      <legend>Keep only these columns</legend>
-      <p class="help">Leave all unticked to keep every column.</p>
+    <div class="block" data-for="query watch" data-tab="columns">
+      <span class="label">Keep only these columns</span>
       <div class="checks" id="columnsPick"></div>
+      <p class="help">Tick none to keep every column.</p>
       <details>
         <summary>Rename columns</summary>
         <input type="text" id="rename" placeholder="Amount (KES) = amount, Customer Name = customer" spellcheck="false">
         <p class="help">Current name = new name. Separate several with commas.</p>
       </details>
-    </fieldset>
+    </div>
 
-    <fieldset>
-      <legend>Add calculated columns</legend>
-      <div class="rows" id="derives"></div>
-      <button class="linkish" id="addDerive">+ add a column</button>
-      <p class="help">Examples: <code>amount * 0.84</code>, <code>if(amount > 1000, high, low)</code>, <code>year(date)</code>, <code>lower(status)</code>, <code>concat(first, ' ', last)</code>. Using an existing column's name replaces it. Available: round, abs, len, lower, upper, trim, concat, year, month, day, if, coalesce.</p>
-    </fieldset>
+    <div class="block" data-for="query watch" data-tab="calc">
+      <span class="label">Calculated columns</span>
+      <div class="list" id="derives"></div>
+      <button class="btn ghost add" id="addDerive"><svg class="i"><use href="#i-plus"/></svg>Add a column</button>
+      <p class="help">For example <code>amount * 0.84</code>, <code>if(amount > 1000, high, low)</code>, <code>year(date)</code>, <code>lower(status)</code> or <code>concat(first, ' ', last)</code>. An existing column's name replaces that column. Also available: round, abs, len, upper, trim, month, day and coalesce.</p>
+    </div>
 
-    <fieldset>
-      <legend>Totals by group</legend>
-      <p class="help">You get one row per group with these totals. Tick nothing and you get a single row for the whole file.</p>
-      <label>Group rows by</label>
+    <div class="block" data-for="query watch" data-tab="totals">
+      <span class="label">Group rows by</span>
       <div class="checks" id="groupPick"></div>
-      <label>Totals</label>
-      <div class="rows" id="aggs"></div>
-      <button class="linkish" id="addAgg">+ add a total</button>
-    </fieldset>
+      <span class="label">Totals</span>
+      <div class="list" id="aggs"></div>
+      <button class="btn ghost add" id="addAgg"><svg class="i"><use href="#i-plus"/></svg>Add a total</button>
+      <p class="help">You get one row per group. Tick nothing to total the whole file in one row.</p>
+    </div>
 
-    <fieldset>
-      <legend>Order and size</legend>
-      <label for="sortCol">Sort by</label>
-      <div class="inline">
-        <select id="sortCol" class="col"></select>
-        <select id="sortDir" class="cond"><option value="">smallest or A first</option><option value="-">largest or Z first</option></select>
-      </div>
+    <div class="block" data-for="query watch" data-tab="sort">
+      <label class="label" for="sortCol">Sort by</label>
+      <div class="row"><select id="sortCol"></select><select id="sortDir"><option value="">smallest or A first</option><option value="-">largest or Z first</option></select></div>
       <p class="help">Empty values always go last.</p>
-      <label for="limit">Stop after</label>
-      <div class="inline"><input type="number" id="limit" class="short" min="0" placeholder="all"> rows</div>
-    </fieldset>
+      <label class="label" for="limit">Stop after</label>
+      <div class="row" style="width:220px"><input type="number" id="limit" min="0" placeholder="all"><span class="help" style="margin:0">rows</span></div>
+    </div>
 
-    <fieldset>
-      <legend>Add columns from another file</legend>
-      <p class="help">Like VLOOKUP: for each row, find the matching row in the other file and add its columns. Rows with no match get empty columns.</p>
-      <div class="inline">
-        <label class="linkish" for="joinFile" style="margin:0;font-weight:400">Choose the other file</label><input type="file" id="joinFile" hidden>
-        <span class="status">or</span>
-        <input type="text" id="joinPath" placeholder="path or web address" spellcheck="false">
-        <button class="secondary" id="useJoinPath">Use this</button>
+    <div class="block" data-for="query watch" data-tab="join">
+      <span class="label">Add columns from another file</span>
+      <p class="help" style="margin:0 0 12px">Like VLOOKUP: each row looks up its match in the other file and gains that file's columns. Rows with no match get empty columns.</p>
+      <div class="row">
+        <label class="btn secondary" for="joinFile"><svg class="i"><use href="#i-upload"/></svg>Choose</label><input type="file" id="joinFile" hidden>
+        <input type="text" id="joinPath" placeholder="or a path or web address" spellcheck="false">
+        <button class="btn secondary" id="useJoinPath">Use</button>
       </div>
-      <p class="status" id="joinStatus"></p>
-      <label for="joinKey">Match on this column</label>
-      <select id="joinKey" class="col"></select>
-      <label for="joinRightKey">…which is called this in the other file (if different)</label>
+      <p class="status" id="joinStatus" style="margin-top:8px"></p>
+      <label class="label" for="joinKey">Match on this column</label>
+      <select id="joinKey"></select>
+      <label class="label" for="joinRightKey">Its name in the other file, if different</label>
       <input type="text" id="joinRightKey" placeholder="same name" spellcheck="false">
-    </fieldset>
+    </div>
   </div>
 
-  <div class="panel" data-for="clean query convert">
-    <label for="format">Save the result as</label>
-    <select id="format">
-      <option value="csv">CSV (.csv) — opens anywhere</option>
-      <option value="xlsx">Excel (.xlsx)</option>
-      <option value="tsv">Tab-separated (.tsv)</option>
-      <option value="json">JSON (.json)</option>
-      <option value="ndjson">NDJSON, one row per line (.ndjson)</option>
-      <option value="parquet">Parquet (.parquet)</option>
-      <option value="md">Markdown table (.md)</option>
-    </select>
-  </div>
-
-  <div class="panel" data-for="watch">
-    <label for="every">Show a fresh summary every</label>
-    <div class="inline"><input type="text" id="every" class="short" value="10s"><span class="help">for example 10s, 1m, 2m30s</span></div>
-    <label for="idle">Finish once the file has not changed for</label>
-    <div class="inline"><input type="text" id="idle" class="short" value="30s"><span class="help">leave blank to keep watching until you press Stop</span></div>
-    <p class="help">Watch only works on a file path typed in step 1, because a copied file never grows. With no totals ticked, each window shows how many new rows arrived.</p>
+  <div class="panel-foot">
+    <div class="saveas block" data-for="clean query convert">
+      <label for="format">Save as</label>
+      <select id="format">
+        <option value="csv">CSV (.csv), opens anywhere</option>
+        <option value="xlsx">Excel (.xlsx)</option>
+        <option value="ods">OpenDocument (.ods)</option>
+        <option value="tsv">Tab-separated (.tsv)</option>
+        <option value="json">JSON (.json)</option>
+        <option value="ndjson">NDJSON, one row per line (.ndjson)</option>
+        <option value="parquet">Parquet (.parquet)</option>
+        <option value="avro">Avro (.avro)</option>
+        <option value="xml">XML (.xml)</option>
+        <option value="html">HTML table (.html)</option>
+        <option value="sql">SQL inserts (.sql)</option>
+        <option value="md">Markdown table (.md)</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button class="btn primary big" id="run"><svg class="i"><use href="#i-play"/></svg><span id="runLabel">Summarize</span></button>
+      <button class="btn secondary big" id="stop" hidden><svg class="i"><use href="#i-stop"/></svg>Stop</button>
+    </div>
+    <p class="keys">Ctrl+Enter runs it from anywhere on the page.</p>
   </div>
 </section>
 
-<section>
-  <h2><span class="n">4.</span>Run</h2>
-  <div class="inline">
-    <button class="primary" id="run">Run</button>
-    <button class="secondary" id="stop" hidden>Stop</button>
-    <span class="status" id="progress"></span>
+<main class="work" id="work">
+  <div class="start" id="startView">
+    <div class="drop" id="drop">
+      <div class="upl"><svg class="i lg"><use href="#i-upload"/></svg></div>
+      <h2>Drop a data file here</h2>
+      <p class="sub">Spreadsheets, exports and data files of any size. You can drop a file anywhere on this page.</p>
+      <label class="btn primary" for="file"><svg class="i"><use href="#i-upload"/></svg>Choose a file</label><input type="file" id="file" hidden>
+      <div class="pathrow">
+        <input type="text" id="path" placeholder="Or paste a path or web address, like C:\Users\you\sales.csv" spellcheck="false">
+        <button class="btn secondary" id="usePath">Open</button>
+      </div>
+      <p class="help">A typed path is read straight from disk with nothing copied, which suits very large files and is what Watch needs.</p>
+      <div class="chips"><span class="chip">CSV</span><span class="chip">TSV</span><span class="chip">JSON</span><span class="chip">NDJSON</span><span class="chip">Excel</span><span class="chip">ODS</span><span class="chip">Parquet</span><span class="chip">XML</span><span class="chip">Avro</span><span class="chip">.gz</span><span class="chip">.zst</span><span class="chip">.zip</span></div>
+      <p class="status" id="fileStatus" role="status"></p>
+      <button class="btn ghost" id="keepFile" hidden>Back</button>
+      <p class="note">Nothing leaves your computer. This page only talks to datacom running on it.</p>
+    </div>
   </div>
-  <div class="error" id="error" hidden></div>
-  <div id="results" hidden>
-    <p id="summary"></p>
-    <ul id="findings"></ul>
-    <p id="downloadRow" hidden><a class="button" id="download" href="#">Download</a></p>
+
+  <div class="ready" id="readyView" hidden>
+    <div class="ready-card">
+      <h2 id="readyTitle"></h2>
+      <p id="readyText"></p>
+      <div class="chips cols" id="readyCols"></div>
+    </div>
+  </div>
+
+  <div class="result" id="resultView" hidden>
+    <div class="rhead">
+      <h2>Result</h2>
+      <span class="pill t-idle" id="pill">Ready</span>
+      <span class="grow"></span>
+      <a class="btn secondary" id="download" href="#" hidden><svg class="i"><use href="#i-download"/></svg><span id="downloadLabel">Download</span></a>
+    </div>
+    <div class="bar-run" id="busy" hidden></div>
+    <p class="progress" id="progress" role="status"></p>
+    <div class="error" id="error" hidden></div>
+    <p class="summary" id="summary" hidden></p>
+    <div class="stats" id="stats"></div>
+    <ul class="findings" id="findings"></ul>
     <p class="caption" id="caption" hidden></p>
     <div class="tablewrap" id="tableWrap" hidden><table id="table"></table></div>
     <pre id="text" hidden></pre>
   </div>
-</section>
 </main>
-
-<footer>{{VERSION}} · the same engine as the command line, so results match exactly.</footer>
+</div>
 
 <script>
 (() => {
 "use strict";
 const TOKEN = "{{TOKEN}}";
 const $ = (id) => document.getElementById(id);
-const S = { source: "", name: "", columns: [], loadedSnake: false, job: null, jobCmd: "", timer: null, lastRows: -1, lastChange: 0, join: { source: "", name: "" } };
+const S = { source: "", name: "", columns: [], loadedSnake: false, job: null, jobCmd: "", lastRows: -1, lastChange: 0, tab: "rows", ran: false, join: { source: "", name: "" } };
 
+const TOOLS = {
+  profile: { title: "Summarize", run: "Summarize", desc: "See each column's type, how much is missing, the common values and any oddities. The file is not changed." },
+  clean: { title: "Clean", run: "Clean", desc: "Fix numbers, dates, yes/no values and stray spaces, then drop empty and duplicate rows. You get a new file; the original stays as it is." },
+  query: { title: "Pick & total", run: "Run", tabs: true, desc: "Keep the rows and columns you need, add calculated columns, then count or sum by group. Cleaning runs first." },
+  convert: { title: "Convert", run: "Convert", desc: "Same rows, new format. Excel to CSV, CSV to Parquet, JSON to Excel." },
+  watch: { title: "Watch", run: "Start watching", tabs: true, desc: "Follow a file that is still being written to and show a fresh summary every few seconds." },
+};
 const CONDS = [
   ["eq", "is"], ["ne", "is not"], ["gt", "is more than"], ["lt", "is less than"],
   ["ge", "is at least"], ["le", "is at most"], ["contains", "contains"],
@@ -308,8 +491,8 @@ const KEYWORDS = new Set(["and", "or", "not", "is", "null", "true", "false"]);
 
 const cmd = () => document.querySelector("input[name=cmd]:checked").value;
 const fmt = (n) => Number(n || 0).toLocaleString();
-const mb = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB";
-const secs = (s) => s >= 60 ? Math.floor(s / 60) + " min " + Math.round(s % 60) + " s" : (s >= 10 ? Math.round(s) : s.toFixed(1)) + " s";
+const size = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : b >= 1e6 ? (b / 1e6).toFixed(b >= 1e8 ? 0 : 1) + " MB" : b >= 1e3 ? Math.round(b / 1e3) + " KB" : b + " B";
+const secs = (s) => s >= 60 ? Math.floor(s / 60) + " min " + Math.round(s % 60) + " s" : s >= 10 ? Math.round(s) + " s" : s >= 1 ? s.toFixed(1) + " s" : Math.max(1, Math.round(s * 1000)) + " ms";
 const basename = (p) => { const parts = p.split(/[?#]/)[0].split(/[\\/]/); return parts[parts.length - 1] || p; };
 const ident = (c) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(c) && !KEYWORDS.has(c.toLowerCase()) ? c : "[" + c + "]";
 const quote = (v) => v.includes("'") ? '"' + v + '"' : "'" + v + "'";
@@ -326,6 +509,13 @@ function el(tag, attrs, ...children) {
   for (const c of children) if (c != null) e.append(c);
   return e;
 }
+function icon(name) {
+  const ns = "http://www.w3.org/2000/svg";
+  const s = document.createElementNS(ns, "svg"), u = document.createElementNS(ns, "use");
+  s.setAttribute("class", "i"); u.setAttribute("href", "#i-" + name); s.append(u);
+  return s;
+}
+const removeBtn = (onclick) => el("button", { class: "btn icon", title: "Remove", "aria-label": "Remove", onclick }, icon("x"));
 
 async function api(path, body) {
   const init = { method: body === undefined ? "GET" : "POST", headers: { "X-Token": TOKEN } };
@@ -356,16 +546,32 @@ function upload(file, onProgress) {
   });
 }
 
-// --- step 1: the file -----------------------------------------------------
+// --- views ------------------------------------------------------------------
+
+function showView(name) {
+  $("startView").hidden = name !== "start";
+  $("readyView").hidden = name !== "ready";
+  $("resultView").hidden = name !== "result";
+}
+function showReady() {
+  const n = S.columns.length;
+  $("readyTitle").textContent = S.name + " is open";
+  $("readyText").textContent = fmt(n) + (n === 1 ? " column" : " columns") + ". Pick a tool on the left, set its options, then press " + TOOLS[cmd()].run + ".";
+  const shown = S.columns.slice(0, 40).map((c) => el("span", { class: "chip" }, c));
+  if (n > 40) shown.push(el("span", { class: "chip" }, "+" + fmt(n - 40) + " more"));
+  $("readyCols").replaceChildren(...shown);
+  showView("ready");
+}
+
+// --- the file ---------------------------------------------------------------
 
 function status(text, isError) {
-  const s = $("fileStatus");
-  s.textContent = text;
-  s.className = "status" + (isError ? " error-text" : S.source ? " ok" : "");
-  if (isError) s.style.color = "var(--error)"; else s.style.color = "";
+  $("fileStatus").textContent = text;
+  $("fileStatus").classList.toggle("bad", !!isError);
 }
 
 async function chooseFile(file) {
+  showView("start");
   status("Copying " + file.name + "…");
   try {
     const d = await upload(file, (p) => status("Copying " + file.name + "… " + Math.round(p * 100) + "%"));
@@ -374,48 +580,92 @@ async function chooseFile(file) {
 }
 
 async function setSource(path, name) {
-  S.source = path; S.name = name; S.columns = [];
-  $("sheetRow").hidden = !/\.xlsx(\.gz)?$/i.test(name);
-  await loadColumns();
+  S.source = path; S.name = name; S.columns = []; S.ran = false;
+  $("noFile").hidden = true; $("openFile").hidden = false;
+  $("fileName").textContent = name; $("fileName").title = path;
+  $("fileMeta").textContent = "reading…";
+  $("sheetRow").hidden = !/\.(xlsx|ods)(\.gz)?$/i.test(name);
+  $("keepFile").textContent = "Back to " + name;
+  await loadColumns(true);
 }
 
-async function loadColumns() {
+async function loadColumns(fresh) {
   if (!S.source) return;
   status("Reading " + S.name + "…");
   try {
     const d = await api("/api/columns", { source: S.source, input: $("input").value, sheet: $("sheet").value.trim(), snake: snakeOn() });
     S.columns = d.columns || [];
     S.loadedSnake = snakeOn();
-    const list = S.columns.length > 12 ? S.columns.slice(0, 12).join(", ") + ", … (" + S.columns.length + " in all)" : S.columns.join(", ");
-    status("Using " + S.name + " — " + S.columns.length + " columns: " + list);
+    status("");
+    $("fileMeta").textContent = fmt(S.columns.length) + (S.columns.length === 1 ? " column" : " columns");
+    $("keepFile").hidden = false;
     rebuildColumnControls();
-  } catch (e) { status("Could not read " + S.name + ": " + e.message, true); }
+    if (fresh || !$("startView").hidden) S.ran ? showView("result") : showReady();
+  } catch (e) {
+    $("fileMeta").textContent = "could not be read";
+    $("keepFile").hidden = true;
+    showView("start");
+    status("Could not read " + S.name + ": " + e.message + ". If the type is wrong, pick it under Read as at the top.", true);
+  }
 }
 
 $("file").addEventListener("change", (e) => { if (e.target.files[0]) chooseFile(e.target.files[0]); e.target.value = ""; });
-const drop = $("drop");
-drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
-drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-drop.addEventListener("drop", (e) => {
-  e.preventDefault(); drop.classList.remove("over");
+window.addEventListener("dragover", (e) => { e.preventDefault(); $("drop").classList.add("over"); });
+window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("drop").classList.remove("over"); });
+window.addEventListener("drop", (e) => {
+  e.preventDefault(); $("drop").classList.remove("over");
   if (e.dataTransfer.files[0]) chooseFile(e.dataTransfer.files[0]);
 });
 const usePath = () => { const p = $("path").value.trim(); if (p) setSource(p, basename(p)); };
 $("usePath").addEventListener("click", usePath);
 $("path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); usePath(); } });
-$("sheet").addEventListener("change", loadColumns);
-$("input").addEventListener("change", loadColumns);
+$("sheet").addEventListener("change", () => loadColumns(false));
+$("input").addEventListener("change", () => loadColumns(false));
+$("changeFile").addEventListener("click", () => { showView("start"); status(""); $("path").focus(); });
+$("keepFile").addEventListener("click", () => S.ran ? showView("result") : showReady());
 
-// --- step 2 & 3: the action and its options -------------------------------
+// --- tools, tabs and options -----------------------------------------------
 
 function showPanels() {
-  const c = cmd();
-  document.querySelectorAll(".panel").forEach((p) => { p.hidden = !p.dataset.for.split(" ").includes(c); });
-  $("run").textContent = { profile: "Summarize", clean: "Clean", query: "Run", convert: "Convert", watch: "Start watching" }[c];
-  if (S.source && snakeOn() !== S.loadedSnake) loadColumns();
+  const c = cmd(), t = TOOLS[c];
+  document.querySelectorAll(".tool").forEach((l) => l.classList.toggle("on", l.querySelector("input").checked));
+  $("toolTitle").textContent = t.title;
+  $("toolDesc").textContent = t.desc;
+  $("runLabel").textContent = t.run;
+  $("tabs").hidden = !t.tabs;
+  document.querySelectorAll(".tab").forEach((b) => { b.setAttribute("aria-selected", String(b.dataset.tab === S.tab)); b.tabIndex = b.dataset.tab === S.tab ? 0 : -1; });
+  document.querySelectorAll(".block").forEach((p) => {
+    const mine = p.dataset.for.split(" ").includes(c);
+    p.hidden = !(mine && (!t.tabs || !p.dataset.tab || p.dataset.tab === S.tab));
+  });
+  if (!$("readyView").hidden) showReady();
+  if (S.source && snakeOn() !== S.loadedSnake) loadColumns(false);
+  badges();
 }
 document.querySelectorAll("input[name=cmd]").forEach((r) => r.addEventListener("change", showPanels));
-$("snake").addEventListener("change", () => { if (S.source && snakeOn() !== S.loadedSnake) loadColumns(); });
+$("snake").addEventListener("change", () => { if (S.source && snakeOn() !== S.loadedSnake) loadColumns(false); });
+const tabs = [...document.querySelectorAll(".tab")];
+tabs.forEach((b) => b.addEventListener("click", () => { S.tab = b.dataset.tab; showPanels(); }));
+$("tabs").addEventListener("keydown", (e) => {
+  const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+  if (!step) return;
+  const i = (tabs.findIndex((b) => b.dataset.tab === S.tab) + step + tabs.length) % tabs.length;
+  S.tab = tabs[i].dataset.tab; showPanels(); tabs[i].focus();
+});
+
+function badges() {
+  const n = {
+    clean: ["snake", "dedupe", "foldCase", "keepEmpty", "noTypes"].filter((id) => $(id).checked).length + ($("phone").value.trim() ? 1 : 0),
+    rows: filterRows().length + ($("whereRaw").value.trim() ? 1 : 0),
+    columns: checked("columnsPick").length + Object.keys(parseRenames($("rename").value)).length,
+    calc: deriveRows().filter((d) => d.name || d.expr).length,
+    totals: checked("groupPick").length + aggRows().length,
+    sort: ($("sortCol").value ? 1 : 0) + (+$("limit").value ? 1 : 0),
+    join: S.join.source ? 1 : 0,
+  };
+  for (const b of tabs) b.querySelector(".n").textContent = n[b.dataset.tab] || "";
+}
+for (const ev of ["input", "change", "click"]) $("panelBody").addEventListener(ev, () => setTimeout(badges));
 
 function fillColSelect(sel, cols, blank) {
   const was = sel.value;
@@ -429,8 +679,8 @@ function fillChecks(id, cols) {
   const box = $(id);
   const was = new Set(checked(id));
   box.replaceChildren();
-  for (const c of cols) box.append(el("label", {}, el("input", { type: "checkbox", value: c, checked: was.has(c) }), c));
-  if (!cols.length) box.append(el("span", { class: "status" }, "Choose a file first."));
+  for (const c of cols) box.append(el("label", { class: "check", title: c }, el("input", { type: "checkbox", value: c, checked: was.has(c) }), el("span", {}, c)));
+  if (!cols.length) box.append(el("span", { class: "status" }, "Open a file first."));
 }
 
 const checked = (id) => [...$(id).querySelectorAll("input:checked")].map((i) => i.value);
@@ -444,37 +694,37 @@ function rebuildColumnControls() {
 }
 
 function addFilter() {
-  const row = el("div", { class: "inline" });
-  const col = el("select", { class: "col" });
+  const row = el("div", { class: "row" });
+  const col = el("select", { class: "col", "aria-label": "Column" });
   fillColSelect(col, S.columns);
-  const cond = el("select", { class: "cond" });
+  const cond = el("select", { class: "cond", "aria-label": "Condition" });
   for (const [v, t] of CONDS) cond.append(el("option", { value: v }, t));
-  const val = el("input", { type: "text", placeholder: "value" });
+  const val = el("input", { type: "text", placeholder: "value", "aria-label": "Value" });
   cond.addEventListener("change", () => { val.hidden = cond.value === "empty" || cond.value === "notempty"; });
-  row.append(col, cond, val, el("button", { class: "linkish x", title: "remove", onclick: () => row.remove() }, "×"));
+  row.append(col, cond, val, removeBtn(() => row.remove()));
   $("filters").append(row);
 }
 
 function addDerive() {
-  const row = el("div", { class: "inline" });
+  const row = el("div", { class: "row" });
   row.append(
-    el("input", { type: "text", class: "name", placeholder: "new column name", spellcheck: "false" }),
+    el("input", { type: "text", class: "name", placeholder: "new column", spellcheck: "false", "aria-label": "New column name" }),
     el("span", { class: "eq" }, "="),
-    el("input", { type: "text", class: "expr", placeholder: "amount * 0.84", spellcheck: "false", oninput: refreshSort }),
-    el("button", { class: "linkish x", title: "remove", onclick: () => { row.remove(); refreshSort(); } }, "×"));
+    el("input", { type: "text", class: "expr", placeholder: "amount * 0.84", spellcheck: "false", "aria-label": "Formula", oninput: refreshSort }),
+    removeBtn(() => { row.remove(); refreshSort(); }));
   $("derives").append(row);
 }
 
 function addAgg() {
-  const row = el("div", { class: "inline" });
-  const fn = el("select", { class: "fn" });
+  const row = el("div", { class: "row" });
+  const fn = el("select", { class: "fn", "aria-label": "Total" });
   for (const [v, t] of FUNCS) fn.append(el("option", { value: v }, t));
-  const col = el("select", { class: "col" });
+  const col = el("select", { class: "col", "aria-label": "Column" });
   fillColSelect(col, S.columns);
   fn.addEventListener("change", () => { col.hidden = fn.value === "count"; refreshSort(); });
   col.hidden = true;
   col.addEventListener("change", refreshSort);
-  row.append(fn, col, el("button", { class: "linkish x", title: "remove", onclick: () => { row.remove(); refreshSort(); } }, "×"));
+  row.append(fn, col, removeBtn(() => { row.remove(); refreshSort(); }));
   $("aggs").append(row);
   refreshSort();
 }
@@ -516,7 +766,7 @@ function outputColumns() {
   return cols.map((c) => renames[c.toLowerCase()] || c);
 }
 
-function refreshSort() { fillColSelect($("sortCol"), outputColumns(), "(keep the file's order)"); }
+function refreshSort() { fillColSelect($("sortCol"), outputColumns(), "keep the file's order"); }
 
 $("joinFile").addEventListener("change", async (e) => {
   const file = e.target.files[0]; e.target.value = "";
@@ -527,29 +777,33 @@ $("joinFile").addEventListener("change", async (e) => {
     S.join = { source: d.path, name: d.name };
     $("joinStatus").textContent = "Using " + d.name;
   } catch (err) { $("joinStatus").textContent = "Could not copy " + file.name + ": " + err.message; }
+  badges();
 });
 $("useJoinPath").addEventListener("click", () => {
   const p = $("joinPath").value.trim();
   if (!p) return;
   S.join = { source: p, name: basename(p) };
   $("joinStatus").textContent = "Using " + S.join.name;
+  badges();
 });
 
-// --- step 4: run ----------------------------------------------------------
+// --- run --------------------------------------------------------------------
 
 function buildRequest() {
   const c = cmd();
   const req = { cmd: c, source: S.source, name: S.name, input: $("input").value, sheet: $("sheet").value.trim() };
   if (c === "profile") { req.top = +$("top").value || 5; req.json = $("json").checked; }
   if (["clean", "query", "watch"].includes(c)) {
-    req.snake = $("snake").checked; req.dedupe = $("dedupe").checked;
+    req.snake = $("snake").checked; req.dedupe = $("dedupe").checked; req.fold_case = $("foldCase").checked;
     req.keep_empty = $("keepEmpty").checked; req.no_types = $("noTypes").checked;
+    req.phone = $("phone").value.trim();
+    if (req.phone && !/^\+?\d{1,4}$/.test(req.phone)) throw new Error("The country code for phone numbers should be digits, like 254.");
   }
   if (["query", "watch"].includes(c)) {
     req.where = [];
     for (const f of filterRows()) {
       const col = ident(f.col), v = quote(f.val.trim());
-      if (!f.col) throw new Error("A condition has no column. Choose a file first, or remove the condition.");
+      if (!f.col) throw new Error("A condition has no column. Open a file first, or remove the condition.");
       if (!["empty", "notempty"].includes(f.cond) && !f.val.trim()) throw new Error("The condition on “" + f.col + "” needs a value.");
       req.where.push({
         eq: col + " == " + v, ne: col + " != " + v, gt: col + " > " + v, lt: col + " < " + v,
@@ -592,72 +846,81 @@ function buildRequest() {
   return req;
 }
 
+function setPill(tone, text) { $("pill").className = "pill t-" + tone; $("pill").textContent = text; }
 function clearResults() {
-  $("error").hidden = true; $("results").hidden = true;
-  for (const id of ["downloadRow", "caption", "tableWrap", "text"]) $(id).hidden = true;
-  $("findings").replaceChildren(); $("summary").textContent = "";
+  for (const id of ["error", "summary", "download", "caption", "tableWrap", "text"]) $(id).hidden = true;
+  $("stats").replaceChildren(); $("findings").replaceChildren(); $("progress").textContent = "";
 }
-function showError(msg) { $("error").textContent = msg; $("error").hidden = false; }
-function progress(text) { $("progress").textContent = text; }
-function finishUI() { $("run").disabled = false; $("stop").hidden = true; progress(""); S.job = null; }
+function showError(msg) {
+  showView("result");
+  setPill("error", "Needs attention");
+  $("error").textContent = msg; $("error").hidden = false;
+}
+function busy(on) { $("run").disabled = on; $("stop").hidden = !on; $("busy").hidden = !on; }
 
 async function runJob() {
-  clearResults();
-  if (!S.source) { showError("Choose a file first (step 1)."); return; }
+  if (S.job) return;
+  if (!S.source) { showView("start"); status("Open a file first: drop one here, choose one, or type its path.", true); return; }
   let req;
-  try { req = buildRequest(); } catch (e) { showError(e.message); return; }
-  $("run").disabled = true; $("stop").hidden = false; progress("Starting…");
+  try { req = buildRequest(); } catch (e) { clearResults(); showError(e.message); return; }
+  clearResults(); showView("result"); setPill("working", "Starting"); busy(true);
   try {
     const { id } = await api("/api/run", req);
-    S.job = id; S.jobCmd = req.cmd; S.lastRows = -1; S.lastChange = Date.now();
+    S.job = id; S.jobCmd = req.cmd; S.lastRows = -1; S.lastChange = Date.now(); S.ran = true;
     poll();
-  } catch (e) { showError(e.message); finishUI(); }
+  } catch (e) { busy(false); showError(e.message); }
 }
 
 async function poll() {
   if (!S.job) return;
   let st;
   try { st = await api("/api/job/" + S.job); }
-  catch (e) { showError(e.message); finishUI(); return; }
+  catch (e) { S.job = null; busy(false); showError(e.message); return; }
   if (!st.done) {
-    let line = "Working… " + fmt(st.rows_in) + " rows read" + (st.bytes ? " · " + mb(st.bytes) : "") + " · " + secs(st.seconds);
+    setPill("working", "Working");
+    let line = fmt(st.rows_in) + " rows read" + (st.bytes ? " · " + size(st.bytes) : "") + " · " + secs(st.seconds);
     if (st.rows_in !== S.lastRows) { S.lastRows = st.rows_in; S.lastChange = Date.now(); }
-    else if (S.jobCmd === "watch" && Date.now() - S.lastChange > 3000) line += " · no new rows; press Stop to finish";
-    progress(line);
+    else if (S.jobCmd === "watch" && Date.now() - S.lastChange > 3000) line += " · no new rows yet; press Stop to finish now";
+    $("progress").textContent = line;
     if (st.text !== undefined) showText(st.text);
-    S.timer = setTimeout(poll, 500);
+    setTimeout(poll, 500);
     return;
   }
+  S.job = null; busy(false); $("progress").textContent = "";
   render(st);
-  finishUI();
 }
 
 $("run").addEventListener("click", runJob);
 $("stop").addEventListener("click", async () => { if (S.job) { try { await api("/api/job/" + S.job + "/cancel", {}); } catch {} } });
+document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runJob(); } });
 
 function showText(text) {
-  $("results").hidden = false;
   $("text").textContent = text || "(nothing yet)";
   $("text").hidden = false;
 }
 
 function render(st) {
   const c = S.jobCmd, r = st.report || {}, t = secs(st.seconds || 0);
-  $("results").hidden = false;
+  showView("result");
   if (st.error) {
     if (st.error === "interrupted" || /context canceled/.test(st.error)) {
-      $("summary").textContent = "Stopped after " + t + ". " + fmt(r.rows_in) + " rows had been read; nothing was saved.";
+      setPill("idle", "Stopped after " + t);
+      $("summary").textContent = fmt(r.rows_in) + " rows had been read when you stopped it. Nothing was saved.";
+      $("summary").hidden = false;
     } else {
       showError("Something went wrong: " + st.error);
-      $("results").hidden = true;
     }
     return;
   }
-  const read = fmt(r.rows_in) + " rows read";
-  $("summary").textContent =
-    c === "profile" ? "Done in " + t + ". " + read + "." :
-    c === "watch" ? "Watched for " + t + ". " + read + "." :
-    "Done in " + t + ". " + read + ", " + fmt(r.rows_out) + " written.";
+  setPill("done", (c === "watch" ? "Watched for " : "Done in ") + t);
+
+  const cards = [["Rows in", fmt(r.rows_in), "Rows read from the file"]];
+  if (c !== "profile" && c !== "watch") cards.push(["Rows out", fmt(r.rows_out), "Rows written to the result"]);
+  if (r.rows_duplicate_dropped) cards.push(["Duplicates", fmt(r.rows_duplicate_dropped), "Duplicate rows dropped"]);
+  if (r.rows_empty_dropped) cards.push(["Empty rows", fmt(r.rows_empty_dropped), "Completely empty rows dropped"]);
+  if (r.bytes_in) cards.push(["Size", size(r.bytes_in), "Data read from the file"]);
+  cards.push(["Time", t, "Time the run took"]);
+  $("stats").replaceChildren(...cards.map(([k, v, tip]) => el("div", { class: "stat", title: tip }, el("span", {}, k), el("b", {}, v))));
 
   const findings = [];
   for (const b of r.untyped_values || []) {
@@ -666,22 +929,21 @@ function render(st) {
   }
   if (r.rows_padded && r.rows_trimmed) findings.push(fmt(r.rows_padded) + " rows had too few columns and " + fmt(r.rows_trimmed) + " too many. Look for stray commas or quotes in the source.");
   else if (r.rows_padded || r.rows_trimmed) findings.push(fmt(r.rows_padded || r.rows_trimmed) + " rows had too " + (r.rows_padded ? "few" : "many") + " columns. Look for stray commas or quotes in the source.");
-  if (r.rows_empty_dropped) findings.push(fmt(r.rows_empty_dropped) + " completely empty rows were dropped.");
-  if (r.rows_duplicate_dropped) findings.push(fmt(r.rows_duplicate_dropped) + " duplicate rows were dropped.");
   if (r.join_unmatched) findings.push(fmt(r.join_unmatched) + " rows found no match in the other file, so their added columns are empty. Check the spelling and case of the matching column.");
   for (const n of r.notes || []) findings.push(n);
-  if (!findings.length && c !== "profile") findings.push("Every value fit its column. Nothing to report.");
-  $("findings").replaceChildren(...findings.map((f) => el("li", {}, f)));
+  const items = findings.map((f) => el("li", {}, icon("alert"), el("span", {}, f)));
+  if (!items.length && c !== "profile") items.push(el("li", { class: "ok" }, icon("check"), el("span", {}, "Every value fit its column. Nothing to report.")));
+  $("findings").replaceChildren(...items);
 
   if (st.download) {
     $("download").href = st.download; $("download").download = st.filename;
-    $("download").textContent = "Download " + st.filename;
-    $("downloadRow").hidden = false;
+    $("downloadLabel").textContent = "Download " + st.filename;
+    $("download").hidden = false;
   }
   const pv = st.preview || {};
   if (pv.header) {
     const total = r.rows_out || 0, shown = (pv.rows || []).length;
-    $("caption").textContent = shown < total ? "The first " + fmt(shown) + " of " + fmt(total) + " rows:" : shown ? "All " + fmt(shown) + " rows:" : "The result has no rows.";
+    $("caption").textContent = shown < total ? "The first " + fmt(shown) + " of " + fmt(total) + " rows" : shown ? "All " + fmt(shown) + " rows" : "The result has no rows.";
     $("caption").hidden = false;
     if (shown) renderTable(pv.header, pv.rows);
   } else if (pv.text !== undefined) {
@@ -691,8 +953,7 @@ function render(st) {
 
 function renderTable(header, rows) {
   const numeric = header.map((_, i) => rows.every((r) => !r[i] || /^-?\d+(\.\d+)?$/.test(r[i])) && rows.some((r) => r[i]));
-  const table = $("table");
-  table.replaceChildren(
+  $("table").replaceChildren(
     el("thead", {}, el("tr", {}, ...header.map((h, i) => el("th", { class: numeric[i] ? "num" : null }, h)))),
     el("tbody", {}, ...rows.map((r) => el("tr", {}, ...header.map((_, i) => el("td", { class: numeric[i] ? "num" : null, title: r[i] || null }, r[i] || ""))))));
   $("tableWrap").hidden = false;
@@ -700,6 +961,7 @@ function renderTable(header, rows) {
 
 showPanels();
 refreshSort();
+showView("start");
 })();
 </script>
 </body>

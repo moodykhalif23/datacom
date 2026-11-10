@@ -142,6 +142,12 @@ func TestUI(t *testing.T) {
 		t.Fatalf("query: %v", st)
 	}
 
+	id = c.post("/api/run", map[string]any{"cmd": "clean", "source": src, "name": "messy.csv", "snake": true, "fold_case": true, "format": "html"})["id"].(string)
+	st = c.wait(id)
+	if text, _ := st["preview"].(map[string]any)["text"].(string); st["error"] != nil || !strings.Contains(text, "<table") || st["filename"] != "messy-clean.html" {
+		t.Fatalf("html clean: %v", st)
+	}
+
 	id = c.post("/api/run", map[string]any{"cmd": "query", "source": src, "select": "zzz"})["id"].(string)
 	if st = c.wait(id); st["error"] == nil || !strings.Contains(st["error"].(string), `"zzz"`) || st["download"] != nil {
 		t.Fatalf("bad column: %v", st)

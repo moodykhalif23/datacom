@@ -50,9 +50,16 @@ Not everyone wants a terminal. The same binary has a browser interface for them:
 datacom ui
 ```
 
-It opens a page at `http://127.0.0.1:7878` with the five actions as plain forms: drop a file in (or type its path, or a URL), pick **Summarize**, **Clean**, **Pick, filter and total**, **Convert** or **Watch**, set the options with a sentence of explanation beside each, and press Run. Filters, totals and sorting are built from menus of the file's actual columns, so nobody has to learn the expression language, though a box for typing conditions by hand is there for those who do. The result comes back as a plain-language report of what happened, a preview of the first rows, and a Download button.
+It opens `http://127.0.0.1:7878`, a dark workspace in the logo's colours laid out like a desktop toolkit, so nothing needs long scrolling:
 
-Everything runs locally through the same code path as the command line, so results match exactly. The page works offline, on Windows, macOS and Linux, and in light or dark mode. `-addr host:port` chooses the address, `-no-open` skips launching the browser. Ctrl-C in the terminal stops it and removes any copied files.
+- **Top bar.** The open file, its column count, a sheet picker for workbooks and a "Read as" override for files whose type is not detected.
+- **Tool rail.** Summarize, Clean, Pick & total, Convert and Watch, each with a one-line hint.
+- **Options panel.** The chosen tool's settings, with a short explanation beside each. Pick & total and Watch split theirs into tabs (Clean, Rows, Columns, Calculate, Totals, Sort, Join) that show how many settings each holds. The run button and output format stay pinned at the bottom.
+- **Workspace.** Drop a file anywhere on the page, choose one, or type a path or URL. After a run it shows a status, summary cards, any findings in plain language, a preview where only the table scrolls, and a Download button.
+
+Filters, totals and sorting are built from menus of the file's actual columns, so nobody has to learn the expression language, though a box for typing conditions by hand is there for those who do. Ctrl+Enter runs the current tool. The layout narrows to an icon rail on small laptops and stacks on phones. The screens are designed in Figma first; the design file holds the colour, spacing and type tokens and the components the page is built from.
+
+Everything runs locally through the same code path as the command line, so results match exactly. The page works offline on Windows, macOS and Linux. `-addr host:port` chooses the address, `-no-open` skips launching the browser. Ctrl-C in the terminal stops it and removes any copied files.
 
 ## Usage
 

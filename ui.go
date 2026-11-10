@@ -137,7 +137,12 @@ func (s *uiServer) handler() http.Handler {
 
 func (s *uiServer) index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	page := strings.NewReplacer("{{TOKEN}}", s.token, "{{VERSION}}", versionString()).Replace(uiHTML)
+	full := versionString()
+	short := strings.Fields(full)[1]
+	if i := strings.Index(short, "-0."); i > 0 { // a pseudo-version from an untagged build
+		short = short[:i] + "-dev"
+	}
+	page := strings.NewReplacer("{{TOKEN}}", s.token, "{{VERSION}}", full, "{{VERSION_SHORT}}", short).Replace(uiHTML)
 	io.WriteString(w, page)
 }
 
@@ -255,6 +260,8 @@ type runRequest struct {
 	Dedupe    bool     `json:"dedupe"`
 	KeepEmpty bool     `json:"keep_empty"`
 	NoTypes   bool     `json:"no_types"`
+	FoldCase  bool     `json:"fold_case"`
+	Phone     string   `json:"phone"`
 	Join      string   `json:"join"`
 	On        string   `json:"on"`
 	Derive    []string `json:"derive"`
@@ -356,6 +363,7 @@ func (s *uiServer) start(w http.ResponseWriter, r *http.Request) {
 	o := opts{
 		in: q.Source, out: j.out, format: string(format), inFormat: q.Input, sheet: q.Sheet,
 		quiet: true, snake: q.Snake, dedupe: q.Dedupe, keepEmpty: q.KeepEmpty, noTypes: q.NoTypes,
+		foldCase: q.FoldCase, phone: q.Phone,
 		join: q.Join, on: q.On, derive: q.Derive, where: q.Where, selectCols: q.Select,
 		group: q.Group, agg: q.Agg, sortKey: q.Sort, limit: q.Limit, top: q.Top, jsonReport: q.JSON,
 		every: every, idle: idle, mon: j.mon,
@@ -385,9 +393,12 @@ func (j *job) run(ctx context.Context, o opts) {
 }
 
 // makePreview reads the output back through the same readers the tool uses,
-// so Excel and Parquet results preview as faithfully as CSV.
+// so Excel and Parquet results preview as faithfully as CSV. Formats with no
+// reader (Markdown, HTML, SQL) are shown as the text that was written.
 func (j *job) makePreview() (preview, error) {
-	if j.cmd == "profile" || j.cmd == "watch" || j.format == pipeline.FormatMarkdown {
+	switch {
+	case j.cmd == "profile", j.cmd == "watch",
+		j.format == pipeline.FormatMarkdown, j.format == pipeline.FormatHTML, j.format == pipeline.FormatSQL:
 		b, err := readTail(j.out, 1<<20)
 		return preview{Text: string(b)}, err
 	}

@@ -156,7 +156,11 @@ func Clean(in *Table, o CleanOptions) (*Table, *Schema) {
 		if mon != nil {
 			for i, n := range folded {
 				if n > 0 {
-					mon.Note("%s: %s values respelled to match the most common form, e.g. %s.", hdr[i], commas(int64(n)), foldExample[i])
+					noun := "values"
+					if n == 1 {
+						noun = "value"
+					}
+					mon.Note("%s: %s %s respelled to match the most common form, e.g. %s.", hdr[i], commas(int64(n)), noun, foldExample[i])
 				}
 			}
 		}
