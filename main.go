@@ -240,7 +240,7 @@ func run(ctx context.Context, cmd string, o opts) (err error) {
 		go mon.Live(os.Stderr, time.Second, isTerminal(os.Stderr), stop)
 	}
 	if mon != nil && liveHook != nil {
-		go liveHook(mon, stop)
+		liveHook(mon)
 	}
 	if partsOutput(o.out) {
 		return runParts(ctx, cmd, o, srcs, mon, rec, start)
@@ -578,9 +578,9 @@ func isTerminal(f *os.File) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// liveHook, when set, follows a run's monitor until stop closes. The browser
-// build uses it to report progress to the page.
-var liveHook func(*pipeline.Monitor, <-chan struct{})
+// liveHook, when set, is handed each run's monitor before reading starts.
+// The browser build uses it to report progress to the page.
+var liveHook func(*pipeline.Monitor)
 
 // version is set by -ldflags "-X main.version=v1.2.3"; otherwise the module
 // version from go install, or "dev".

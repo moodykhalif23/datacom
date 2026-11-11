@@ -27,6 +27,7 @@ type Monitor struct {
 	counts                                   map[string]*atomic.Int64
 	notes                                    []string
 	err                                      error
+	onRead                                   func()
 }
 
 type badColumn struct {
@@ -63,16 +64,24 @@ func bump(c *atomic.Int64, n int64) {
 }
 
 // Meter wraps r so bytes read are counted.
-func (m *Monitor) Meter(r io.Reader) io.Reader { return &meter{r, &m.Bytes} }
+func (m *Monitor) Meter(r io.Reader) io.Reader { return &meter{r, m} }
+
+// OnRead sets a function called after each read through Meter, for progress
+// reports where a timer goroutine may not get to run, as in the browser.
+// Set it before reading starts.
+func (m *Monitor) OnRead(f func()) { m.onRead = f }
 
 type meter struct {
-	r io.Reader
-	n *atomic.Int64
+	r   io.Reader
+	mon *Monitor
 }
 
 func (m *meter) Read(p []byte) (int, error) {
 	n, err := m.r.Read(p)
-	m.n.Add(int64(n))
+	m.mon.Bytes.Add(int64(n))
+	if m.mon.onRead != nil {
+		m.mon.onRead()
+	}
 	return n, err
 }
 
